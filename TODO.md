@@ -29,8 +29,8 @@ This document tracks planned features, enhancements, and known issues for the Co
 ## Medium Priority
 
 ### Features
-- [ ] **CSV export**: Export channel data to CSV format for compatibility with other tools and spreadsheet analysis
-- [ ] **Bulk channel operations**: Select multiple channels for batch editing, deletion, or copying
+- [x] **CSV export**: Export channel data to CSV format for compatibility with other tools and spreadsheet analysis (Jan 2026)
+- [x] **Bulk channel operations**: Select multiple channels for batch editing, deletion, or copying (Jan 2026)
 
 ### Format Support
 - [ ] **Baofeng direct programming**: Read/write directly to Baofeng radios via USB cable (lower priority - may not be worth effort vs. using CHIRP)
@@ -44,7 +44,8 @@ This document tracks planned features, enhancements, and known issues for the Co
 - [ ] **Channel zones/groups**: Organize channels into user-defined groups
 - [ ] **Import/Export presets**: Save and load channel configurations
 - [ ] **Frequency calculator**: Repeater offset calculator and tone lookup
-- [ ] **Channel validation**: Warn about out-of-band frequencies, invalid tones
+- [x] **Automatic frequency formatting**: Format frequency inputs to standard MHz precision (XXX.XXXXXX) with live tree view updates (Jan 2026)
+- [x] **Channel validation**: Warn about out-of-band frequencies, invalid tones (Jan 2026)
 - [ ] **Auto-programming**: Generate channels from repeater databases
 
 ---
@@ -160,6 +161,10 @@ This allows:
 - [x] Arrow key navigation (Up/Down for channels, Left/Right for tabs) (Jan 2026)
 - [x] Window icon support (Jan 2026)
 - [x] Data binding for all editable fields (Jan 2026)
+- [x] CSV export functionality (Jan 2026)
+- [x] Automatic frequency formatting with live tree view updates (Jan 2026)
+- [x] Channel validation with visual warnings for out-of-band frequencies and invalid tones (Jan 2026)
+- [x] Bulk channel operations with multi-select, right-click context menu, delete and duplicate (Jan 2026)
 
 ---
 

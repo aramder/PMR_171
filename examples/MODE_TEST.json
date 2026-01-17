@@ -1,4 +1,11 @@
 {
+    "radio_profile": "pmr171",
+    "radio_metadata": {
+        "manufacturer": "Guohetec",
+        "model": "PMR-171",
+        "frequency_architecture": "dual_vfo"
+    },
+    "channels": {
     "0": {
         "callFormat": 0,
         "callId1": 0,
@@ -544,5 +551,6 @@
         "vfobFrequency3": 248,
         "vfobFrequency4": 160,
         "vfobMode": 6
+    }
     }
 }
