@@ -7,11 +7,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 ## High Priority
 
 ### Core Functionality
-- [ ] **Dual frequency architecture**: PMR-171 requires TWO frequencies per memory channel (VFO A and VFO B), but CHIRP only provides one. Need to:
-  - Design an intermediate JSON format that supports dual frequencies per channel
-  - Update GUI to display/edit both VFO A and VFO B frequencies
-  - Add "Export to PMR-171" menu option that converts from intermediate format to PMR-171 compatible JSON
-  - Current single-frequency channels should default to using same frequency for both VFOs (simplex operation)
+- [x] **Dual frequency architecture**: PMR-171 requires TWO frequencies per memory channel (VFO A and VFO B), but CHIRP only provides one. **Solution**: When importing from single-frequency sources (CHIRP), program the same frequency into both VFO A and VFO B (simplex operation). No intermediate format needed. (Jan 2026)
 
 - [ ] **Direct PMR-171 programming via UART**: Implement direct radio programming without needing manufacturer software
   - Research UART command protocol (check PMR-171 manual for documentation)
@@ -22,7 +18,8 @@ This document tracks planned features, enhancements, and known issues for the Co
   - Error handling and validation before writing to radio
 
 ### GUI Enhancements
-- [ ] **Channel renumbering**: Add +/- buttons to allow users to change channel numbers and automatically re-sort the channel list
+- [x] **Channel renumbering**: Add +/- buttons to allow users to change channel numbers and automatically re-sort the channel list
+- [x] **Add Channel button**: Toolbar with Motorola Astro CPS-style buttons for Add/Delete/Move/Duplicate channels
 
 ---
 
@@ -43,7 +40,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 - [x] **Undo/Redo**: Implement edit history for reverting changes (Jan 2026)
 - [ ] **Channel zones/groups**: Organize channels into user-defined groups
 - [ ] **Import/Export presets**: Save and load channel configurations
-- [ ] **Frequency calculator**: Repeater offset calculator and tone lookup
+- [x] **Frequency calculator**: Repeater offset calculator and tone lookup
 - [x] **Automatic frequency formatting**: Format frequency inputs to standard MHz precision (XXX.XXXXXX) with live tree view updates (Jan 2026)
 - [x] **Channel validation**: Warn about out-of-band frequencies, invalid tones (Jan 2026)
 - [ ] **Auto-programming**: Generate channels from repeater databases
@@ -81,10 +78,7 @@ This document tracks planned features, enhancements, and known issues for the Co
   - Live updates via StringVar/IntVar traces
   - Save writes entire `self.channels` back to JSON
 
-- **Limitation**: Currently tied to PMR-171 format
-  - Single-frequency sources (CHIRP) duplicate freq to both VFOs
-  - No clean separation between "working format" and "export format"
-  - This works for now but needs redesign for dual-frequency support
+- **Design Decision**: Single-frequency sources (CHIRP) duplicate freq to both VFOs A and B for simplex operation. This is the intended behavior, not a limitation.
 
 ### Recommended Future Architecture
 ```

@@ -13,6 +13,39 @@ from datetime import datetime
 from ..utils.validation import validate_channel, get_frequency_band_name
 
 
+class ToolTip:
+    """Create a tooltip for a given widget"""
+    def __init__(self, widget, text):
+        self.widget = widget
+        self.text = text
+        self.tooltip_window = None
+        widget.bind("<Enter>", self.show_tooltip)
+        widget.bind("<Leave>", self.hide_tooltip)
+    
+    def show_tooltip(self, event=None):
+        if self.tooltip_window or not self.text:
+            return
+        x, y, _, _ = self.widget.bbox("insert") if hasattr(self.widget, 'bbox') else (0, 0, 0, 0)
+        x += self.widget.winfo_rootx() + 25
+        y += self.widget.winfo_rooty() + 25
+        
+        self.tooltip_window = tw = tk.Toplevel(self.widget)
+        tw.wm_overrideredirect(True)
+        tw.wm_geometry(f"+{x}+{y}")
+        
+        label = tk.Label(tw, text=self.text, justify=tk.LEFT,
+                        background="#FFFFDD", foreground="#000000",
+                        relief=tk.SOLID, borderwidth=1,
+                        font=('Arial', 9), padx=5, pady=3)
+        label.pack()
+    
+    def hide_tooltip(self, event=None):
+        tw = self.tooltip_window
+        self.tooltip_window = None
+        if tw:
+            tw.destroy()
+
+
 class ChannelTableViewer:
     """Professional radio programming interface with tree navigation and tabbed detail view"""
     
@@ -74,6 +107,11 @@ class ChannelTableViewer:
         self.undo_stack: List[Dict[str, Dict]] = []
         self.redo_stack: List[Dict[str, Dict]] = []
         self.max_undo_levels = 50  # Limit memory usage
+        
+        # Filter settings (initialized in show() after root window created)
+        self.show_empty_channels = None
+        self.group_by_type = None  # Separate Analog/DMR into groups
+        self.search_var = None  # Search filter text
         
         # Available columns for tree view (ordered as desired)
         self.available_columns = {
@@ -177,7 +215,8 @@ class ChannelTableViewer:
     def get_standard_offset(freq_mhz: float) -> float:
         """Get standard repeater offset for a given frequency in MHz
         
-        Based on RadioReference wiki: https://wiki.radioreference.com/index.php/Offset
+        Based on RadioReference wiki with extended ranges for VHF (30-300 MHz)
+        and UHF (300-3000 MHz) bands.
         
         Args:
             freq_mhz: Frequency in MHz
@@ -185,75 +224,73 @@ class ChannelTableViewer:
         Returns:
             Standard offset in MHz (positive or negative)
         """
-        # 10m Ham (29.5-29.7 MHz): -100 kHz
-        if 29.5 <= freq_mhz <= 29.7:
-            return -0.1
+        # ===== VHF BAND (30-300 MHz) =====
         
-        # 6m Ham (50-54 MHz): -500 kHz (using -0.5 as more common)
-        if 50 <= freq_mhz <= 54:
+        # 10m / Low VHF (29-54 MHz): -0.5 MHz default
+        if 29 <= freq_mhz < 54:
             return -0.5
         
-        # 2m Ham (144-148 MHz): ±600 kHz (using +0.6 as default)
-        if 144 <= freq_mhz <= 148:
+        # Mid VHF (54-148 MHz): +0.6 MHz (2m standard)
+        # Covers VHF-Lo public safety, NOAA weather (162 MHz area), etc.
+        if 54 <= freq_mhz < 148:
             return 0.6
         
-        # 220 MHz (220-222 MHz): +1 MHz
-        if 220 <= freq_mhz <= 222:
-            return 1.0
+        # 2m Ham and VHF High (148-174 MHz): +0.6 MHz
+        # Includes NOAA weather (162.xxx), MURS, business band
+        if 148 <= freq_mhz < 174:
+            return 0.6
         
-        # 1.25m Ham (222-225 MHz): -1.6 MHz
-        if 222 <= freq_mhz <= 225:
+        # VHF High (174-216 MHz): +0.6 MHz (TV broadcast, but use VHF standard)
+        if 174 <= freq_mhz < 216:
+            return 0.6
+        
+        # 220-225 MHz (1.25m): -1.6 MHz
+        if 216 <= freq_mhz < 225:
             return -1.6
         
-        # 380 MHz Federal LMR (380-400 MHz): +10 MHz
-        if 380 <= freq_mhz <= 400:
-            return 10.0
+        # Upper VHF (225-300 MHz): +1.0 MHz (military air, etc.)
+        if 225 <= freq_mhz < 300:
+            return 1.0
         
-        # Federal UHF (406.1-420 MHz): +9 MHz
-        if 406.1 <= freq_mhz <= 420:
+        # ===== UHF BAND (300-3000 MHz) =====
+        
+        # Lower UHF (300-406 MHz): +5.0 MHz
+        if 300 <= freq_mhz < 406:
+            return 5.0
+        
+        # Federal UHF (406-420 MHz): +9 MHz
+        if 406 <= freq_mhz < 420:
             return 9.0
         
-        # 70cm Ham (440-450 MHz): +5 MHz (default, -5 MHz also used)
-        if 440 <= freq_mhz <= 450:
+        # 70cm Ham and UHF (420-512 MHz): +5 MHz
+        if 420 <= freq_mhz < 512:
             return 5.0
         
-        # UHF Canadian border (420-430 MHz): +5 MHz
-        if 420 <= freq_mhz <= 430:
+        # UHF 512-698 MHz: +5 MHz
+        if 512 <= freq_mhz < 698:
             return 5.0
         
-        # UHF (450-470 MHz): +5 MHz
-        if 450 <= freq_mhz <= 470:
-            return 5.0
-        
-        # UHF-T (470-512 MHz): +3 MHz
-        if 470 <= freq_mhz <= 512:
-            return 3.0
-        
-        # Lower 700 MHz (698-746 MHz): +30 MHz
-        if 698 <= freq_mhz <= 746:
-            return 30.0
-        
-        # Upper 700 MHz (746-806 MHz): +30 MHz
-        if 746 <= freq_mhz <= 806:
+        # 700 MHz (698-806 MHz): +30 MHz
+        if 698 <= freq_mhz < 806:
             return 30.0
         
         # 800 MHz (806-896 MHz): -45 MHz
-        if 806 <= freq_mhz <= 896:
+        if 806 <= freq_mhz < 896:
             return -45.0
         
-        # 900 MHz (896-940 MHz): -39 MHz
-        if 896 <= freq_mhz <= 940:
+        # 900 MHz (896-960 MHz): -39 MHz
+        if 896 <= freq_mhz < 960:
             return -39.0
         
-        # 33cm Ham (902-928 MHz): -12 MHz (default, -25 MHz also used)
-        if 902 <= freq_mhz <= 928:
+        # 33cm / 900 MHz+ (960-1300 MHz): -12 MHz
+        if 960 <= freq_mhz < 1300:
             return -12.0
         
-        # 23cm Ham (1240-1300 MHz): -12 MHz (default, -20 MHz also used)
-        if 1240 <= freq_mhz <= 1300:
+        # Upper microwave (1300-3000 MHz): -12 MHz default
+        if 1300 <= freq_mhz <= 3000:
             return -12.0
         
-        # No standard offset for this frequency
+        # Outside typical amateur/commercial bands
         return 0.0
     
     def show(self):
@@ -322,12 +359,135 @@ class ChannelTableViewer:
         header = ttk.Label(parent, text="Channels", style='Header.TLabel')
         header.pack(fill=tk.X)
         
+        # Toolbar (Motorola Astro CPS style)
+        toolbar_frame = ttk.Frame(parent, padding=2)
+        toolbar_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        # Create toolbar buttons with icons/text
+        # Add Channel button (green +)
+        self.add_btn = tk.Button(
+            toolbar_frame, 
+            text="➕", 
+            font=('Arial', 10),
+            width=3,
+            bg='#90EE90',  # Light green background
+            activebackground='#32CD32',  # Lime green when clicked
+            relief=tk.RAISED,
+            bd=2,
+            command=self._add_channel
+        )
+        self.add_btn.pack(side=tk.LEFT, padx=1)
+        ToolTip(self.add_btn, "Add new channel (creates a new channel with default values)")
+        
+        # Delete Channel button (red X)
+        self.delete_btn = tk.Button(
+            toolbar_frame,
+            text="✕",
+            font=('Arial', 10, 'bold'),
+            width=3,
+            bg='#FFB6C1',  # Light red/pink background
+            activebackground='#FF6B6B',  # Red when clicked
+            fg='#8B0000',  # Dark red text
+            relief=tk.RAISED,
+            bd=2,
+            command=self._bulk_delete
+        )
+        self.delete_btn.pack(side=tk.LEFT, padx=1)
+        ToolTip(self.delete_btn, "Delete selected channel(s)")
+        
+        # Separator
+        ttk.Separator(toolbar_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
+        
+        # Move Up button (increase channel number priority / move earlier)
+        self.move_up_btn = tk.Button(
+            toolbar_frame,
+            text="▲",
+            font=('Arial', 9),
+            width=3,
+            relief=tk.RAISED,
+            bd=2,
+            command=self._move_channel_up
+        )
+        self.move_up_btn.pack(side=tk.LEFT, padx=1)
+        ToolTip(self.move_up_btn, "Decrease channel number by 1 (move to lower slot)")
+        
+        # Move Down button (increase channel number by 1)
+        self.move_down_btn = tk.Button(
+            toolbar_frame,
+            text="▼",
+            font=('Arial', 9),
+            width=3,
+            relief=tk.RAISED,
+            bd=2,
+            command=self._move_channel_down
+        )
+        self.move_down_btn.pack(side=tk.LEFT, padx=1)
+        ToolTip(self.move_down_btn, "Increase channel number by 1 (move to higher slot)")
+        
+        # Separator
+        ttk.Separator(toolbar_frame, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=4)
+        
+        # Duplicate button
+        self.duplicate_btn = tk.Button(
+            toolbar_frame,
+            text="⧉",
+            font=('Arial', 10),
+            width=3,
+            relief=tk.RAISED,
+            bd=2,
+            command=self._bulk_duplicate
+        )
+        self.duplicate_btn.pack(side=tk.LEFT, padx=1)
+        ToolTip(self.duplicate_btn, "Duplicate selected channel(s)")
+        
+        # Filter bar
+        filter_frame = ttk.Frame(parent, padding=2)
+        filter_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        ttk.Label(filter_frame, text="Filters:", font=('Arial', 8, 'bold')).pack(side=tk.LEFT, padx=(0, 5))
+        
+        # Initialize filter variables if not already (for when show() hasn't been called)
+        if not hasattr(self, 'show_empty_channels') or self.show_empty_channels is None:
+            self.show_empty_channels = tk.BooleanVar(value=False)
+        
+        if not hasattr(self, 'group_by_type') or self.group_by_type is None:
+            self.group_by_type = tk.BooleanVar(value=False)  # Default: no grouping
+        
+        self.show_empty_check = ttk.Checkbutton(
+            filter_frame,
+            text="Show empty channels",
+            variable=self.show_empty_channels,
+            command=self._on_filter_changed,
+            style='Toggle.TCheckbutton'
+        )
+        self.show_empty_check.pack(side=tk.LEFT, padx=2)
+        ToolTip(self.show_empty_check, "Show gaps in memory assignment (empty channel slots)")
+        
+        # Group by type checkbox
+        self.group_by_type_check = ttk.Checkbutton(
+            filter_frame,
+            text="Group by type",
+            variable=self.group_by_type,
+            command=self._on_filter_changed,
+            style='Toggle.TCheckbutton'
+        )
+        self.group_by_type_check.pack(side=tk.LEFT, padx=8)
+        ToolTip(self.group_by_type_check, "Separate channels into Analog and DMR groups")
+        
         # Search box
         search_frame = ttk.Frame(parent)
         search_frame.pack(fill=tk.X, padx=5, pady=5)
         ttk.Label(search_frame, text="Search:").pack(side=tk.LEFT)
-        search_entry = ttk.Entry(search_frame)
+        
+        # Initialize search variable
+        if not hasattr(self, 'search_var') or self.search_var is None:
+            self.search_var = tk.StringVar()
+        
+        search_entry = ttk.Entry(search_frame, textvariable=self.search_var)
         search_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # Bind search to filter as user types
+        self.search_var.trace_add('write', lambda *args: self._on_search_changed())
         
         # Tree with scrollbar
         tree_frame = ttk.Frame(parent)
@@ -745,34 +905,88 @@ class ChannelTableViewer:
     
     def _rebuild_channel_tree(self, reselect_channel_id=None):
         """Rebuild the channel tree with current data"""
-        # Clear existing channel items (keep group nodes)
+        # Clear existing channel items
         for item in self.channel_tree.get_children():
             self.channel_tree.delete(item)
         
-        # Recreate group nodes
-        analog_node = self.channel_tree.insert('', 'end', text='Analog Channels', open=True)
-        dmr_node = self.channel_tree.insert('', 'end', text='DMR Channels', open=True)
+        # Check filter options
+        show_empty = hasattr(self, 'show_empty_channels') and self.show_empty_channels and self.show_empty_channels.get()
+        group_by_type = hasattr(self, 'group_by_type') and self.group_by_type and self.group_by_type.get()
+        search_text = self.search_var.get().lower().strip() if hasattr(self, 'search_var') and self.search_var else ''
+        
+        # Configure tag for empty channels (grayed out)
+        self.channel_tree.tag_configure('empty', foreground='#999999', background='#F5F5F5')
+        
+        # Create group nodes only if grouping is enabled
+        analog_node = None
+        dmr_node = None
+        if group_by_type:
+            analog_node = self.channel_tree.insert('', 'end', text='Analog Channels', open=True)
+            dmr_node = self.channel_tree.insert('', 'end', text='DMR Channels', open=True)
         
         item_to_select = None
         
-        # Add channels
-        for ch_id, ch_data in sorted(self.channels.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 999999):
-            # Extract column values
-            column_values = []
-            for col_id in self.selected_columns:
-                if col_id in self.available_columns:
-                    extract_func = self.available_columns[col_id]['extract']
-                    column_values.append(extract_func(ch_data))
+        # Get sorted channel IDs
+        existing_ids = sorted([int(ch_id) for ch_id in self.channels.keys() if ch_id.isdigit()])
+        
+        if show_empty and existing_ids:
+            # Build complete range from 0 to max channel number
+            max_ch = max(existing_ids)
+            all_slots = list(range(0, max_ch + 1))
+        else:
+            # Just show existing channels
+            all_slots = existing_ids
+        
+        # Add channels (and empty slots if filter enabled)
+        for ch_num in all_slots:
+            ch_id = str(ch_num)
             
-            # Determine parent based on channel type
-            parent_node = dmr_node if ch_data.get('chType', 0) == 1 else analog_node
-            
-            # Insert item
-            item_id = self.channel_tree.insert(parent_node, 'end',
-                text=ch_id,
-                values=tuple(column_values),
-                tags=(ch_id,)
-            )
+            if ch_id in self.channels:
+                # Real channel - extract column values
+                ch_data = self.channels[ch_id]
+                
+                # Apply search filter
+                if search_text:
+                    ch_name = ch_data.get('channelName', '').rstrip('\u0000').strip().lower()
+                    if search_text not in ch_name and search_text not in ch_id:
+                        continue  # Skip this channel if it doesn't match search
+                
+                column_values = []
+                for col_id in self.selected_columns:
+                    if col_id in self.available_columns:
+                        extract_func = self.available_columns[col_id]['extract']
+                        column_values.append(extract_func(ch_data))
+                
+                # Determine parent based on grouping option
+                if group_by_type:
+                    parent_node = dmr_node if ch_data.get('chType', 0) == 1 else analog_node
+                else:
+                    parent_node = ''  # Root level when not grouping
+                
+                # Insert item
+                item_id = self.channel_tree.insert(parent_node, 'end',
+                    text=ch_id,
+                    values=tuple(column_values),
+                    tags=(ch_id,)
+                )
+            else:
+                # Empty slot - show placeholder (only when show_empty is on)
+                if not show_empty:
+                    continue
+                    
+                empty_values = ['(empty slot)'] + ['—'] * (len(self.selected_columns) - 1)
+                
+                # Determine parent for empty slots
+                if group_by_type:
+                    parent_node = analog_node  # Put empty slots under Analog by default
+                else:
+                    parent_node = ''  # Root level
+                
+                item_id = self.channel_tree.insert(parent_node, 'end',
+                    text=ch_id,
+                    values=tuple(empty_values),
+                    tags=(ch_id, 'empty')  # Tag as empty for styling
+                )
             
             if reselect_channel_id and ch_id == reselect_channel_id:
                 item_to_select = item_id
@@ -794,7 +1008,21 @@ class ChannelTableViewer:
         
         # Update status if it exists
         if hasattr(self, 'status_label'):
-            self.status_label.config(text=f"Total Channels: {len(self.channels)} | Ready")
+            visible_count = len([item for item in self.channel_tree.get_children('') 
+                               if self.channel_tree.item(item, 'tags')])
+            if group_by_type:
+                # Count children in groups
+                visible_count = 0
+                for group in self.channel_tree.get_children(''):
+                    visible_count += len(self.channel_tree.get_children(group))
+            
+            empty_count = len(all_slots) - len(existing_ids) if show_empty else 0
+            if search_text:
+                self.status_label.config(text=f"Search: '{search_text}' | Showing {visible_count} channels")
+            elif show_empty and empty_count > 0:
+                self.status_label.config(text=f"Total: {len(self.channels)} channels + {empty_count} empty slots")
+            else:
+                self.status_label.config(text=f"Total Channels: {len(self.channels)} | Ready")
     
     def _get_first_channel_item(self):
         """Get the first channel item in the tree (skip group nodes)"""
@@ -1086,6 +1314,10 @@ class ChannelTableViewer:
         vfoa_rx_freq_var = tk.StringVar(value=vfoa_rx_freq)
         rx_entry = ttk.Entry(rx_frame, textvariable=vfoa_rx_freq_var, width=20)
         rx_entry.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Bind FocusOut to validate and save RX frequency
+        rx_entry.bind('<FocusOut>', lambda e: self._on_frequency_focus_out(
+            vfoa_rx_freq_var, 'vfoaFrequency', rx_entry))
         rx_row += 1
         
         # RX CTCSS/DCS (disabled for DMR channels)
@@ -1127,12 +1359,16 @@ class ChannelTableViewer:
         ttk.Label(tx_frame, text="TX Frequency (MHz):", font=('Arial', 9, 'bold')).grid(
             row=tx_row, column=0, sticky=tk.W, padx=5, pady=5)
         vfoa_tx_freq = self.freq_from_bytes(
-            ch_data['vfoaFrequency1'], ch_data['vfoaFrequency2'],
-            ch_data['vfoaFrequency3'], ch_data['vfoaFrequency4']
+            ch_data['vfobFrequency1'], ch_data['vfobFrequency2'],
+            ch_data['vfobFrequency3'], ch_data['vfobFrequency4']
         )
         vfoa_tx_freq_var = tk.StringVar(value=vfoa_tx_freq)
         tx_entry = ttk.Entry(tx_frame, textvariable=vfoa_tx_freq_var, width=20)
         tx_entry.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
+        
+        # Bind FocusOut to validate and save TX frequency
+        tx_entry.bind('<FocusOut>', lambda e: self._on_frequency_focus_out(
+            vfoa_tx_freq_var, 'vfobFrequency', tx_entry))
         tx_row += 1
         
         # TX CTCSS/DCS (disabled for DMR channels)
@@ -1170,7 +1406,7 @@ class ChannelTableViewer:
         
         tools_row = 0
         
-        # Offset display
+        # Current offset display
         ttk.Label(tools_frame, text="Current Offset:", font=('Arial', 9, 'bold')).grid(
             row=tools_row, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
         tools_row += 1
@@ -1198,24 +1434,22 @@ class ChannelTableViewer:
             row=tools_row, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(5, 2))
         tools_row += 1
         
-        # Copy RX to TX button (left to right arrow)
+        # Copy RX to TX button
         def copy_rx_to_tx():
             vfoa_tx_freq_var.set(vfoa_rx_freq_var.get())
             offset_var.set("+0.000000 MHz")
         
-        copy_rx_btn = ttk.Button(tools_frame, text="RX → TX (Simplex)", 
-                                command=copy_rx_to_tx)
-        copy_rx_btn.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
-        tools_row += 1
-        
-        # Copy TX to RX button (right to left arrow)
+        # Copy TX to RX button
         def copy_tx_to_rx():
-            vfoa_rx_freq_var.set(vfob_vfoa_tx_freq_var.get())
+            vfoa_rx_freq_var.set(vfoa_tx_freq_var.get())
             offset_var.set("+0.000000 MHz")
         
-        copy_tx_btn = ttk.Button(tools_frame, text="RX ← TX",
-                                command=copy_tx_to_rx)
-        copy_tx_btn.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
+        ttk.Button(tools_frame, text="RX ⟶ TX", command=copy_rx_to_tx).grid(
+            row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
+        tools_row += 1
+        
+        ttk.Button(tools_frame, text="RX ⟵ TX", command=copy_tx_to_rx).grid(
+            row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
         tools_row += 1
         
         # Separator
@@ -1228,10 +1462,17 @@ class ChannelTableViewer:
             row=tools_row, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(5, 2))
         tools_row += 1
         
-        # Calculate standard offset based on RX frequency
+        # Calculate standard offset based on RX frequency, or use current offset if non-zero
         try:
             rx_freq_float = float(vfoa_rx_freq_var.get().split()[0])
-            suggested_offset = self.get_standard_offset(rx_freq_float)
+            tx_freq_float = float(vfoa_tx_freq_var.get().split()[0])
+            current_offset = tx_freq_float - rx_freq_float
+            
+            # Use current offset if it's non-zero, otherwise suggest standard offset
+            if abs(current_offset) > 0.001:
+                suggested_offset = current_offset
+            else:
+                suggested_offset = self.get_standard_offset(rx_freq_float)
         except (ValueError, IndexError):
             suggested_offset = 0.0
         
@@ -1241,7 +1482,7 @@ class ChannelTableViewer:
         custom_offset_entry.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
         tools_row += 1
         
-        # Preset offset buttons in a grid
+        # Preset offset buttons
         preset_frame = ttk.Frame(tools_frame)
         preset_frame.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
         tools_row += 1
@@ -1249,14 +1490,12 @@ class ChannelTableViewer:
         def set_offset(value):
             custom_offset_var.set(f"{value:.1f}")
         
-        btn_plus5 = ttk.Button(preset_frame, text="+5.0", command=lambda: set_offset(5.0), width=7)
-        btn_plus5.grid(row=0, column=0, padx=2, pady=2)
-        
-        btn_minus06 = ttk.Button(preset_frame, text="-0.6", command=lambda: set_offset(-0.6), width=7)
-        btn_minus06.grid(row=0, column=1, padx=2, pady=2)
-        
-        btn_minus5 = ttk.Button(preset_frame, text="-5.0", command=lambda: set_offset(-5.0), width=7)
-        btn_minus5.grid(row=0, column=2, padx=2, pady=2)
+        ttk.Button(preset_frame, text="+5.0", command=lambda: set_offset(5.0), width=6).grid(
+            row=0, column=0, padx=2, pady=2)
+        ttk.Button(preset_frame, text="-0.6", command=lambda: set_offset(-0.6), width=6).grid(
+            row=0, column=1, padx=2, pady=2)
+        ttk.Button(preset_frame, text="-5.0", command=lambda: set_offset(-5.0), width=6).grid(
+            row=0, column=2, padx=2, pady=2)
         
         preset_frame.grid_columnconfigure(0, weight=1)
         preset_frame.grid_columnconfigure(1, weight=1)
@@ -1272,38 +1511,34 @@ class ChannelTableViewer:
             row=tools_row, column=0, columnspan=2, sticky=tk.W, padx=5, pady=(5, 2))
         tools_row += 1
         
-        # Apply offset RX to TX (left to right with offset)
+        # Apply offset RX to TX
         def apply_offset_rx_to_tx():
             try:
                 rx_freq = float(vfoa_rx_freq_var.get().split()[0])
                 offset_mhz = float(custom_offset_var.get())
                 new_tx = rx_freq + offset_mhz
-                tx_band = self.validation_module.get_frequency_band_name(new_tx)
-                vfoa_tx_freq_var.set(f"{new_tx:.6f} ({tx_band})")
+                vfoa_tx_freq_var.set(f"{new_tx:.6f}")
                 offset_var.set(f"{offset_mhz:+.6f} MHz")
             except (ValueError, IndexError):
                 pass
         
-        btn_offset_right = ttk.Button(tools_frame, text="RX → TX + Offset",
-                                     command=apply_offset_rx_to_tx)
-        btn_offset_right.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
-        tools_row += 1
-        
-        # Apply offset TX to RX (right to left with offset)
+        # Apply offset TX to RX
         def apply_offset_tx_to_rx():
             try:
-                tx_freq = float(vfob_vfoa_tx_freq_var.get().split()[0])
+                tx_freq = float(vfoa_tx_freq_var.get().split()[0])
                 offset_mhz = float(custom_offset_var.get())
-                new_rx = tx_freq + offset_mhz
-                rx_band = self.validation_module.get_frequency_band_name(new_rx)
-                vfoa_rx_freq_var.set(f"{new_rx:.6f} ({rx_band})")
-                offset_var.set(f"{-offset_mhz:+.6f} MHz")
+                new_rx = tx_freq - offset_mhz
+                vfoa_rx_freq_var.set(f"{new_rx:.6f}")
+                offset_var.set(f"{offset_mhz:+.6f} MHz")
             except (ValueError, IndexError):
                 pass
         
-        btn_offset_left = ttk.Button(tools_frame, text="RX ← TX + Offset",
-                                    command=apply_offset_tx_to_rx)
-        btn_offset_left.grid(row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
+        ttk.Button(tools_frame, text="RX + ⟶ TX", command=apply_offset_rx_to_tx).grid(
+            row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
+        tools_row += 1
+        
+        ttk.Button(tools_frame, text="RX ⟵ + TX", command=apply_offset_tx_to_rx).grid(
+            row=tools_row, column=0, columnspan=2, sticky=tk.EW, padx=5, pady=2)
         tools_row += 1
         
         # Layout canvas and scrollbar
@@ -1804,6 +2039,81 @@ class ChannelTableViewer:
             self._save_state("Rename channel")
             self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
     
+    def _on_frequency_focus_out(self, freq_var: tk.StringVar, field_prefix: str, entry_widget):
+        """Handle when frequency entry loses focus - validate and save frequency
+        
+        Args:
+            freq_var: StringVar containing the frequency value
+            field_prefix: Prefix for frequency fields (e.g., 'vfoaFrequency' or 'vfobFrequency')
+            entry_widget: The entry widget for visual feedback
+        """
+        if not self.current_channel or self.current_channel not in self.channels:
+            return
+        
+        freq_str = freq_var.get().strip()
+        
+        # Remove any warning symbols
+        freq_str = freq_str.replace(' ⚠', '').strip()
+        
+        try:
+            # Parse the frequency
+            freq_mhz = float(freq_str)
+            
+            # Validate range (1 MHz to 1000 MHz reasonable for this radio)
+            if freq_mhz < 1 or freq_mhz > 1000:
+                # Show warning but still allow the value
+                entry_widget.config(foreground='#CC0000')
+                self.status_label.config(text=f"Warning: Frequency {freq_mhz} MHz may be out of range")
+            else:
+                # Reset to normal color
+                entry_widget.config(foreground='black')
+            
+            # Convert to bytes using the frequency utility
+            from ..utils.frequency import frequency_to_bytes
+            f1, f2, f3, f4 = frequency_to_bytes(freq_mhz)
+            
+            # Get current values to check if changed
+            ch_data = self.channels[self.current_channel]
+            old_f1 = ch_data.get(f'{field_prefix}1', 0)
+            old_f2 = ch_data.get(f'{field_prefix}2', 0)
+            old_f3 = ch_data.get(f'{field_prefix}3', 0)
+            old_f4 = ch_data.get(f'{field_prefix}4', 0)
+            
+            # Only save state and update if value actually changed
+            if (f1, f2, f3, f4) != (old_f1, old_f2, old_f3, old_f4):
+                # Save state for undo
+                self._save_state(f"Change {field_prefix}")
+                
+                # Update channel data
+                self.channels[self.current_channel][f'{field_prefix}1'] = f1
+                self.channels[self.current_channel][f'{field_prefix}2'] = f2
+                self.channels[self.current_channel][f'{field_prefix}3'] = f3
+                self.channels[self.current_channel][f'{field_prefix}4'] = f4
+                
+                # Update the display to show formatted value
+                freq_var.set(f"{freq_mhz:.6f}")
+                
+                # Rebuild tree to update frequency column
+                self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+                
+                self.status_label.config(text=f"Updated {field_prefix} to {freq_mhz:.6f} MHz")
+            
+        except ValueError:
+            # Invalid frequency - show error and revert to original value
+            entry_widget.config(foreground='#CC0000')
+            self.status_label.config(text=f"Invalid frequency: '{freq_str}' - reverting")
+            
+            # Revert to original value from channel data
+            ch_data = self.channels[self.current_channel]
+            original_freq = self.freq_from_bytes(
+                ch_data.get(f'{field_prefix}1', 0),
+                ch_data.get(f'{field_prefix}2', 0),
+                ch_data.get(f'{field_prefix}3', 0),
+                ch_data.get(f'{field_prefix}4', 0)
+            )
+            freq_var.set(original_freq)
+            entry_widget.config(foreground='black')
+    
     def _update_field(self, field_name, value):
         """Update a field in the current channel's data"""
         if self.current_channel and self.current_channel in self.channels:
@@ -1815,6 +2125,288 @@ class ChannelTableViewer:
             if field_name == 'chType':
                 self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
     
+    def _add_channel(self):
+        """Add a new channel - behavior depends on what's selected:
+        - Empty slot selected: Fill that slot with a new channel (copy from nearest channel)
+        - Enabled channel selected: Insert a copy immediately after, shifting subsequent channels up
+        - No selection: Add at the end (copy from last channel)
+        """
+        # Get current selection
+        selection = self.channel_tree.selection()
+        selected_id = None
+        is_empty_slot = False
+        
+        if selection:
+            item = selection[0]
+            tags = self.channel_tree.item(item, 'tags')
+            if tags:
+                selected_id = tags[0]
+                # Check if it's an empty slot
+                is_empty_slot = selected_id not in self.channels
+        
+        # Save state for undo
+        self._save_state("Add channel")
+        
+        existing_ids = [int(ch_id) for ch_id in self.channels.keys() if ch_id.isdigit()]
+        
+        if is_empty_slot and selected_id:
+            # Case 1: Empty slot selected - fill that slot
+            target_id = int(selected_id)
+            
+            # Find nearest existing channel to copy from
+            source_channel = None
+            source_id = None
+            if existing_ids:
+                # Find closest channel below this slot
+                lower_ids = [i for i in existing_ids if i < target_id]
+                upper_ids = [i for i in existing_ids if i > target_id]
+                
+                if lower_ids:
+                    source_id = str(max(lower_ids))
+                elif upper_ids:
+                    source_id = str(min(upper_ids))
+                
+                if source_id:
+                    source_channel = self.channels[source_id]
+            
+            if source_channel:
+                new_channel = copy.deepcopy(source_channel)
+            else:
+                new_channel = self._create_default_channel()
+            
+            new_channel['channelLow'] = target_id
+            new_channel['channelName'] = f'NEW CH {target_id}'.ljust(16, '\u0000')[:16]
+            
+            self.channels[selected_id] = new_channel
+            self._rebuild_channel_tree(reselect_channel_id=selected_id)
+            self.status_label.config(text=f"Enabled channel {target_id} | Total: {len(self.channels)}")
+            
+        elif selected_id and selected_id in self.channels:
+            # Case 2: Enabled channel selected - insert after, shift subsequent channels up
+            current_num = int(selected_id)
+            insert_at = current_num + 1
+            
+            # Check if the next slot is free
+            if str(insert_at) not in self.channels:
+                # Next slot is free - just insert there
+                source_channel = self.channels[selected_id]
+                new_channel = copy.deepcopy(source_channel)
+                new_channel['channelLow'] = insert_at
+                new_channel['channelName'] = f'NEW CH {insert_at}'.ljust(16, '\u0000')[:16]
+                self.channels[str(insert_at)] = new_channel
+                self._rebuild_channel_tree(reselect_channel_id=str(insert_at))
+                self.status_label.config(text=f"Inserted channel {insert_at} (copied from CH {selected_id}) | Total: {len(self.channels)}")
+            else:
+                # Need to shift channels up to make room
+                # Find all channels >= insert_at and shift them up by 1
+                channels_to_shift = sorted([i for i in existing_ids if i >= insert_at], reverse=True)
+                
+                for ch_num in channels_to_shift:
+                    old_id = str(ch_num)
+                    new_id = str(ch_num + 1)
+                    
+                    # Move channel to new slot
+                    ch_data = self.channels.pop(old_id)
+                    ch_data['channelLow'] = ch_num + 1
+                    self.channels[new_id] = ch_data
+                
+                # Now insert the new channel at insert_at
+                source_channel = self.channels[selected_id]  # Original selected channel is unchanged
+                new_channel = copy.deepcopy(source_channel)
+                new_channel['channelLow'] = insert_at
+                new_channel['channelName'] = f'NEW CH {insert_at}'.ljust(16, '\u0000')[:16]
+                self.channels[str(insert_at)] = new_channel
+                
+                self._rebuild_channel_tree(reselect_channel_id=str(insert_at))
+                shifted_count = len(channels_to_shift)
+                self.status_label.config(text=f"Inserted CH {insert_at}, shifted {shifted_count} channels | Total: {len(self.channels)}")
+        else:
+            # Case 3: No selection or invalid selection - add at the end
+            next_id = max(existing_ids) + 1 if existing_ids else 0
+            
+            source_channel = None
+            source_id = None
+            if existing_ids:
+                source_id = str(max(existing_ids))
+                source_channel = self.channels[source_id]
+            
+            if source_channel:
+                new_channel = copy.deepcopy(source_channel)
+            else:
+                new_channel = self._create_default_channel()
+            
+            new_channel['channelLow'] = next_id
+            new_channel['channelName'] = f'NEW CH {next_id}'.ljust(16, '\u0000')[:16]
+            
+            self.channels[str(next_id)] = new_channel
+            self._rebuild_channel_tree(reselect_channel_id=str(next_id))
+            
+            if source_id:
+                self.status_label.config(text=f"Added channel {next_id} (copied from CH {source_id}) | Total: {len(self.channels)}")
+            else:
+                self.status_label.config(text=f"Added new channel {next_id} | Total: {len(self.channels)}")
+    
+    def _create_default_channel(self):
+        """Create a new channel with default values (based on PMR-171 format)"""
+        return {
+            'channelLow': 0,
+            'channelHigh': 0,
+            'channelName': 'NEW CH'.ljust(16, '\u0000')[:16],
+            'chType': 0,  # Analog
+            'vfoaMode': 6,  # NFM
+            'vfobMode': 6,
+            'vfoaFrequency1': 0x1A,  # 446.000000 MHz (default FRS/PMR446)
+            'vfoaFrequency2': 0x98,
+            'vfoaFrequency3': 0x96,
+            'vfoaFrequency4': 0x80,
+            'vfobFrequency1': 0x1A,  # Same as RX
+            'vfobFrequency2': 0x98,
+            'vfobFrequency3': 0x96,
+            'vfobFrequency4': 0x80,
+            'vfoaPower': 0,  # Low
+            'vfobPower': 0,
+            'vfoaBandwidth': 0,  # Narrow
+            'vfobBandwidth': 0,
+            'vfoaSquelchMode': 0,  # Carrier
+            'vfobSquelchMode': 0,
+            'rxCtcss': 0,  # Off
+            'txCtcss': 0,
+            'rxCc': 1,  # Color Code 1
+            'txCc': 1,
+            'ownId1': 0,
+            'ownId2': 0,
+            'ownId3': 0,
+            'ownId4': 0,
+            'callId1': 0,
+            'callId2': 0,
+            'callId3': 0,
+            'callId4': 0,
+            'slot': 1,  # Timeslot 1
+            'emergency': 0,
+            'scrambler': 0,
+            'compander': 0,
+            'vox': 0,
+            'pttId': 0,
+            'busyLock': 0,
+            'scanList': 0
+        }
+    
+    def _move_channel_up(self):
+        """Decrease channel number by 1 (change channel from N to N-1)"""
+        selection = self.channel_tree.selection()
+        if not selection:
+            return
+        
+        # Get selected channel ID
+        item = selection[0]
+        tags = self.channel_tree.item(item, 'tags')
+        if not tags:
+            return  # Group node selected
+        
+        current_id = tags[0]
+        
+        # Check if this is an empty slot
+        if current_id not in self.channels:
+            self.status_label.config(text="Cannot move empty slot")
+            return
+        
+        current_num = int(current_id)
+        new_num = current_num - 1
+        
+        # Can't go below 0
+        if new_num < 0:
+            self.status_label.config(text="Channel number cannot be less than 0")
+            return
+        
+        new_id = str(new_num)
+        
+        # Check if the new slot is occupied
+        if new_id in self.channels:
+            self.status_label.config(text=f"Channel {new_num} already exists - swap or delete it first")
+            return
+        
+        # Save state for undo
+        self._save_state("Change channel number")
+        
+        # Move the channel to the new number
+        channel_data = self.channels.pop(current_id)
+        channel_data['channelLow'] = new_num
+        self.channels[new_id] = channel_data
+        
+        # Rebuild tree and select the moved channel
+        self._rebuild_channel_tree(reselect_channel_id=new_id)
+        
+        # Update current_channel to follow the moved channel
+        self.current_channel = new_id
+        
+        # Update status
+        self.status_label.config(text=f"Changed channel number: {current_num} → {new_num}")
+    
+    def _on_filter_changed(self):
+        """Handle filter checkbox changes - rebuild tree with filters applied"""
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        
+        # Update status to reflect filter state
+        filter_status = []
+        if self.show_empty_channels.get():
+            filter_status.append("showing empty slots")
+        if hasattr(self, 'group_by_type') and self.group_by_type.get():
+            filter_status.append("grouped by type")
+        
+        if filter_status:
+            self.status_label.config(text=f"Filter: {', '.join(filter_status)} | Total: {len(self.channels)}")
+        else:
+            self.status_label.config(text=f"Total Channels: {len(self.channels)} | Ready")
+    
+    def _on_search_changed(self):
+        """Handle search text changes - filter tree in real-time"""
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+    
+    def _move_channel_down(self):
+        """Increase channel number by 1 (change channel from N to N+1)"""
+        selection = self.channel_tree.selection()
+        if not selection:
+            return
+        
+        # Get selected channel ID
+        item = selection[0]
+        tags = self.channel_tree.item(item, 'tags')
+        if not tags:
+            return  # Group node selected
+        
+        current_id = tags[0]
+        
+        # Check if this is an empty slot
+        if current_id not in self.channels:
+            self.status_label.config(text="Cannot move empty slot")
+            return
+        
+        current_num = int(current_id)
+        new_num = current_num + 1
+        new_id = str(new_num)
+        
+        # Check if the new slot is occupied
+        if new_id in self.channels:
+            self.status_label.config(text=f"Channel {new_num} already exists - swap or delete it first")
+            return
+        
+        # Save state for undo
+        self._save_state("Change channel number")
+        
+        # Move the channel to the new number
+        channel_data = self.channels.pop(current_id)
+        channel_data['channelLow'] = new_num
+        self.channels[new_id] = channel_data
+        
+        # Rebuild tree and select the moved channel
+        self._rebuild_channel_tree(reselect_channel_id=new_id)
+        
+        # Update current_channel to follow the moved channel
+        self.current_channel = new_id
+        
+        # Update status
+        self.status_label.config(text=f"Changed channel number: {current_num} → {new_num}")
+
 def view_channel_file(json_path: Path, title: str = None):
     """Load and view a PMR-171 JSON file
     
