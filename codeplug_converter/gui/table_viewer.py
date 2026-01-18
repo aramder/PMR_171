@@ -120,9 +120,7 @@ class ChannelTableViewer:
             'rx_ctcss': {'label': 'RX CTCSS/DCS', 'width': 90, 'extract': lambda ch: self.ctcss_dcs_from_value(ch.get('rxCtcss', 0))},
             'tx_freq': {'label': 'TX Freq', 'width': 90, 'extract': lambda ch: self.freq_from_bytes(ch['vfobFrequency1'], ch['vfobFrequency2'], ch['vfobFrequency3'], ch['vfobFrequency4'])},
             'tx_ctcss': {'label': 'TX CTCSS/DCS', 'width': 90, 'extract': lambda ch: self.ctcss_dcs_from_value(ch.get('txCtcss', ch.get('rxCtcss', 0)))},
-            'mode': {'label': 'Mode', 'width': 60, 'extract': lambda ch: self.CHANNEL_TYPES.get(ch.get('chType', 0), 'Unknown')},
-            'power': {'label': 'Power', 'width': 70, 'extract': lambda ch: self.POWER_LEVELS.get(ch.get('power', 0), 'Unknown')},
-            'bandwidth': {'label': 'Bandwidth', 'width': 90, 'extract': lambda ch: ch.get('bandwidth', 'N/A')}
+            'mode': {'label': 'Mode', 'width': 60, 'extract': lambda ch: self.MODE_NAMES.get(ch.get('vfoaMode', 6), 'NFM')}
         }
         
         # Default selected columns (shown by default)
@@ -439,6 +437,18 @@ class ChannelTableViewer:
         )
         self.duplicate_btn.pack(side=tk.LEFT, padx=1)
         ToolTip(self.duplicate_btn, "Duplicate selected channel(s)")
+        
+        # Select Columns button row (above filters)
+        columns_frame = ttk.Frame(parent, padding=2)
+        columns_frame.pack(fill=tk.X, padx=5, pady=2)
+        
+        self.columns_btn = ttk.Button(
+            columns_frame,
+            text="Select Columns...",
+            command=self._show_column_selector
+        )
+        self.columns_btn.pack(side=tk.LEFT)
+        ToolTip(self.columns_btn, "Select columns to display in the channel list")
         
         # Filter bar
         filter_frame = ttk.Frame(parent, padding=2)
@@ -1077,13 +1087,13 @@ class ChannelTableViewer:
     
     def _create_status_bar(self):
         """Create status bar at bottom"""
-        status_frame = ttk.Frame(self.root, relief=tk.SUNKEN)
-        status_frame.pack(side=tk.BOTTOM, fill=tk.X)
+        status_frame = ttk.Frame(self.root)
+        status_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=(2, 0))
         
         self.status_label = ttk.Label(
             status_frame,
             text=f"Total Channels: {len(self.channels)} | Ready",
-            padding=5
+            padding=(5, 2)
         )
         self.status_label.pack(side=tk.LEFT)
     
@@ -1114,8 +1124,6 @@ class ChannelTableViewer:
         self._populate_dmr_tab(ch_data)
         self._populate_advanced_tab(ch_data)
         self._populate_raw_tab(ch_data)
-        
-        self.status_label.config(text=f"Viewing Channel {ch_num}")
     
     def _populate_general_tab(self, ch_data):
         """Populate General Settings tab"""
@@ -1166,19 +1174,7 @@ class ChannelTableViewer:
         name_entry.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
         row += 1
         
-        # Channel Type
-        ttk.Label(scrollable_frame, text="Channel Type:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        ch_type = self.CHANNEL_TYPES.get(ch_data['chType'], 'Unknown')
-        type_combo = ttk.Combobox(scrollable_frame, values=list(self.CHANNEL_TYPES.values()),
-                                 state='readonly', width=27)
-        type_combo.set(ch_type)
-        type_combo.bind('<<ComboboxSelected>>', lambda e: self._update_field('chType', 
-            {v: k for k, v in self.CHANNEL_TYPES.items()}[type_combo.get()]))
-        type_combo.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
-        row += 1
-        
-        # Mode
+        # Mode (chType is auto-set based on mode: DMR mode sets chType=1, others set chType=0)
         ttk.Label(scrollable_frame, text="Mode:", font=('Arial', 9, 'bold')).grid(
             row=row, column=0, sticky=tk.W, padx=10, pady=5)
         mode = self.MODE_NAMES.get(ch_data['vfoaMode'], 'NFM')  # Default to NFM instead of ?
@@ -1860,54 +1856,82 @@ class ChannelTableViewer:
         self.status_label.config(text=f"Deleted {len(channel_ids)} channel(s) | Total: {len(self.channels)}")
     
     def _bulk_duplicate(self):
-        """Duplicate selected channels"""
+        """Duplicate selected channels - insert immediately after source channels"""
         selection = self.channel_tree.selection()
         if not selection:
             return
         
-        # Filter out group nodes and get channel IDs
+        # Filter out group nodes and get channel IDs (sorted by channel number)
         channel_ids = []
         for item in selection:
             tags = self.channel_tree.item(item, 'tags')
-            if tags:
+            if tags and tags[0] in self.channels:
                 channel_ids.append(tags[0])
         
         if not channel_ids:
             return
         
+        # Sort by channel number (ascending) to process in order
+        channel_ids.sort(key=lambda x: int(x))
+        
         # Save state before duplication for undo
         self._save_state("Duplicate channels")
         
-        # Find next available channel ID
         existing_ids = [int(ch_id) for ch_id in self.channels.keys() if ch_id.isdigit()]
-        next_id = max(existing_ids) + 1 if existing_ids else 0
         
-        # Duplicate each selected channel
+        # Track the first duplicated channel to select it afterwards
+        first_duplicate_id = None
         duplicated_count = 0
-        for ch_id in channel_ids:
-            if ch_id in self.channels:
-                # Create a deep copy of the channel
-                import copy
-                new_channel = copy.deepcopy(self.channels[ch_id])
-                
-                # Update channel name to indicate it's a copy
-                original_name = new_channel.get('channelName', '').rstrip('\u0000').strip()
-                new_name = f"{original_name} (Copy)" if original_name else f"Channel {next_id}"
-                new_channel['channelName'] = new_name.ljust(16, '\u0000')  # Pad to 16 chars
-                
-                # Update channelLow field with new ID
-                new_channel['channelLow'] = next_id
-                
-                # Add to channels dict
-                self.channels[str(next_id)] = new_channel
-                next_id += 1
-                duplicated_count += 1
         
-        # Rebuild tree
-        self._rebuild_channel_tree()
+        # Process each channel to duplicate (in reverse order to handle shifting correctly)
+        for ch_id in reversed(channel_ids):
+            if ch_id not in self.channels:
+                continue
+            
+            source_num = int(ch_id)
+            insert_at = source_num + 1
+            
+            # Shift all channels >= insert_at up by 1 to make room
+            channels_to_shift = sorted([i for i in existing_ids if i >= insert_at], reverse=True)
+            
+            for ch_num in channels_to_shift:
+                old_id = str(ch_num)
+                new_id = str(ch_num + 1)
+                
+                if old_id in self.channels:
+                    ch_data = self.channels.pop(old_id)
+                    ch_data['channelLow'] = ch_num + 1
+                    self.channels[new_id] = ch_data
+            
+            # Update existing_ids after shifting
+            existing_ids = [int(ch_id) for ch_id in self.channels.keys() if ch_id.isdigit()]
+            
+            # Create the duplicate at insert_at
+            new_channel = copy.deepcopy(self.channels[ch_id])
+            
+            # Update channel name to indicate it's a copy
+            original_name = new_channel.get('channelName', '').rstrip('\u0000').strip()
+            new_name = f"{original_name} (Copy)" if original_name else f"Channel {insert_at}"
+            # Truncate to fit 16 chars including null padding
+            new_name = new_name[:16].ljust(16, '\u0000')
+            new_channel['channelName'] = new_name
+            
+            # Update channelLow field with new ID
+            new_channel['channelLow'] = insert_at
+            
+            # Add to channels dict
+            self.channels[str(insert_at)] = new_channel
+            existing_ids.append(insert_at)
+            
+            # Track first duplicate (will be the last one processed since we're in reverse)
+            first_duplicate_id = str(insert_at)
+            duplicated_count += 1
+        
+        # Rebuild tree and select the first duplicated channel
+        self._rebuild_channel_tree(reselect_channel_id=first_duplicate_id)
         
         # Update status
-        self.status_label.config(text=f"Duplicated {duplicated_count} channel(s) | Total: {len(self.channels)}")
+        self.status_label.config(text=f"Duplicated {duplicated_count} channel(s), inserted after source | Total: {len(self.channels)}")
     
     def _show_column_selector(self):
         """Show dialog to select which columns to display in the tree"""
@@ -1916,28 +1940,29 @@ class ChannelTableViewer:
         dialog.geometry("350x400")
         dialog.transient(self.root)
         dialog.grab_set()
+        dialog.configure(bg='SystemButtonFace')
         
         # Header
-        header = ttk.Label(dialog, text="Choose columns to display:", 
+        header = tk.Label(dialog, text="Choose columns to display:", 
                           font=('Arial', 10, 'bold'))
         header.pack(pady=10, padx=10, anchor='w')
         
         # Frame for checkboxes
-        checkbox_frame = ttk.Frame(dialog)
+        checkbox_frame = tk.Frame(dialog)
         checkbox_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
         
-        # Create checkbox variables
+        # Create checkbox variables using tk.Checkbutton
         checkbox_vars = {}
         for col_id, col_info in self.available_columns.items():
             var = tk.BooleanVar(value=(col_id in self.selected_columns))
             checkbox_vars[col_id] = var
             
-            cb = ttk.Checkbutton(checkbox_frame, text=col_info['label'], 
-                                variable=var)
+            cb = tk.Checkbutton(checkbox_frame, text=col_info['label'], 
+                               variable=var, font=('Arial', 9))
             cb.pack(anchor='w', pady=3)
         
         # Buttons
-        button_frame = ttk.Frame(dialog)
+        button_frame = tk.Frame(dialog)
         button_frame.pack(fill=tk.X, padx=20, pady=15)
         
         def on_ok():
@@ -1958,8 +1983,8 @@ class ChannelTableViewer:
         def on_cancel():
             dialog.destroy()
         
-        ttk.Button(button_frame, text="OK", command=on_ok).pack(side=tk.LEFT, padx=5)
-        ttk.Button(button_frame, text="Cancel", command=on_cancel).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="OK", command=on_ok, width=8).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=on_cancel, width=8).pack(side=tk.LEFT, padx=5)
         
         # Center dialog on parent
         dialog.update_idletasks()
@@ -2121,8 +2146,17 @@ class ChannelTableViewer:
             self._save_state(f"Change {field_name}")
             
             self.channels[self.current_channel][field_name] = value
-            # Rebuild tree if channel type changed
-            if field_name == 'chType':
+            
+            # Auto-set chType based on mode (DMR mode = 9 sets chType to 1, others to 0)
+            if field_name == 'vfoaMode':
+                if value == 9:  # DMR mode
+                    self.channels[self.current_channel]['chType'] = 1
+                else:
+                    self.channels[self.current_channel]['chType'] = 0
+                # Rebuild tree to update Mode column display
+                self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+            # Rebuild tree if channel type changed directly (for backwards compatibility)
+            elif field_name == 'chType':
                 self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
     
     def _add_channel(self):
@@ -2292,7 +2326,7 @@ class ChannelTableViewer:
         }
     
     def _move_channel_up(self):
-        """Decrease channel number by 1 (change channel from N to N-1)"""
+        """Decrease channel number by 1 (swap with channel above if occupied)"""
         selection = self.channel_tree.selection()
         if not selection:
             return
@@ -2320,27 +2354,37 @@ class ChannelTableViewer:
         
         new_id = str(new_num)
         
-        # Check if the new slot is occupied
-        if new_id in self.channels:
-            self.status_label.config(text=f"Channel {new_num} already exists - swap or delete it first")
-            return
-        
         # Save state for undo
-        self._save_state("Change channel number")
+        self._save_state("Move channel up")
         
-        # Move the channel to the new number
-        channel_data = self.channels.pop(current_id)
-        channel_data['channelLow'] = new_num
-        self.channels[new_id] = channel_data
+        # Check if the new slot is occupied - if so, swap
+        if new_id in self.channels:
+            # Swap the two channels
+            other_channel = self.channels.pop(new_id)
+            current_channel = self.channels.pop(current_id)
+            
+            # Update channelLow values
+            current_channel['channelLow'] = new_num
+            other_channel['channelLow'] = current_num
+            
+            # Put them back in swapped positions
+            self.channels[new_id] = current_channel
+            self.channels[current_id] = other_channel
+            
+            self.status_label.config(text=f"Swapped channels {current_num} ↔ {new_num}")
+        else:
+            # Move to empty slot
+            channel_data = self.channels.pop(current_id)
+            channel_data['channelLow'] = new_num
+            self.channels[new_id] = channel_data
+            
+            self.status_label.config(text=f"Moved channel: {current_num} → {new_num}")
         
         # Rebuild tree and select the moved channel
         self._rebuild_channel_tree(reselect_channel_id=new_id)
         
         # Update current_channel to follow the moved channel
         self.current_channel = new_id
-        
-        # Update status
-        self.status_label.config(text=f"Changed channel number: {current_num} → {new_num}")
     
     def _on_filter_changed(self):
         """Handle filter checkbox changes - rebuild tree with filters applied"""
@@ -2363,7 +2407,7 @@ class ChannelTableViewer:
         self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
     
     def _move_channel_down(self):
-        """Increase channel number by 1 (change channel from N to N+1)"""
+        """Increase channel number by 1 (swap with channel below if occupied)"""
         selection = self.channel_tree.selection()
         if not selection:
             return
@@ -2385,27 +2429,37 @@ class ChannelTableViewer:
         new_num = current_num + 1
         new_id = str(new_num)
         
-        # Check if the new slot is occupied
-        if new_id in self.channels:
-            self.status_label.config(text=f"Channel {new_num} already exists - swap or delete it first")
-            return
-        
         # Save state for undo
-        self._save_state("Change channel number")
+        self._save_state("Move channel down")
         
-        # Move the channel to the new number
-        channel_data = self.channels.pop(current_id)
-        channel_data['channelLow'] = new_num
-        self.channels[new_id] = channel_data
+        # Check if the new slot is occupied - if so, swap
+        if new_id in self.channels:
+            # Swap the two channels
+            other_channel = self.channels.pop(new_id)
+            current_channel = self.channels.pop(current_id)
+            
+            # Update channelLow values
+            current_channel['channelLow'] = new_num
+            other_channel['channelLow'] = current_num
+            
+            # Put them back in swapped positions
+            self.channels[new_id] = current_channel
+            self.channels[current_id] = other_channel
+            
+            self.status_label.config(text=f"Swapped channels {current_num} ↔ {new_num}")
+        else:
+            # Move to empty slot
+            channel_data = self.channels.pop(current_id)
+            channel_data['channelLow'] = new_num
+            self.channels[new_id] = channel_data
+            
+            self.status_label.config(text=f"Moved channel: {current_num} → {new_num}")
         
         # Rebuild tree and select the moved channel
         self._rebuild_channel_tree(reselect_channel_id=new_id)
         
         # Update current_channel to follow the moved channel
         self.current_channel = new_id
-        
-        # Update status
-        self.status_label.config(text=f"Changed channel number: {current_num} → {new_num}")
 
 def view_channel_file(json_path: Path, title: str = None):
     """Load and view a PMR-171 JSON file
