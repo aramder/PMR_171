@@ -6,6 +6,23 @@ This document tracks planned features, enhancements, and known issues for the Co
 
 ## High Priority
 
+### JSON Format Validation & Factory Software Compatibility
+- [x] **Comprehensive test suite**: 24 tests validating PMR-171 JSON format compatibility (Jan 2026)
+- [x] **Cross-validate with factory software output**: ✅ VALIDATED - See docs/FACTORY_JSON_COMPARISON.md (Jan 2026)
+  - [x] Verified field value ranges match factory software - Perfect match!
+  - [x] Frequency encoding validated - Mathematically correct big-endian Hz
+  - [x] Field structure confirmed - All 40+ fields match factory format
+  - [ ] Test with actual radio hardware to confirm loadability - **Hardware testing needed**
+- [x] **Additional JSON field analysis**: ✅ COMPLETE (Jan 2026)
+  - [x] callFormat values documented: 0=analog, 2=digital (chType=0 vs chType=1)
+  - [x] callId/ownId patterns documented: Big-endian 32-bit DMR IDs for digital channels
+  - [x] chType=1 requirements verified: Requires callFormat=2, non-zero DMR IDs
+  - [x] Default field values confirmed: txCc=2, all others 0 (matches factory)
+- [ ] **Minor enhancement identified**: Update callFormat=2 for digital channels (currently always 0)
+  - Impact: Low priority (only affects DMR channels, may work anyway)
+  - Files to update: codeplug_converter/writers/pmr171_writer.py
+  - See docs/FACTORY_JSON_COMPARISON.md for details
+
 ### Core Functionality
 - [x] **Dual frequency architecture**: PMR-171 requires TWO frequencies per memory channel (VFO A and VFO B), but CHIRP only provides one. **Solution**: When importing from single-frequency sources (CHIRP), program the same frequency into both VFO A and VFO B (simplex operation). No intermediate format needed. (Jan 2026)
 
@@ -134,14 +151,200 @@ This allows:
 - **Tree Item Selection**: Use `tags=(ch_id,)` to map tree items back to channel IDs
 - **Rebuild Performance**: Full tree rebuild is fast enough (<50ms for 100 channels)
 
-### UART Programming Research Needed
-- Check PMR-171 user manual for programming protocol documentation
-- If undocumented, capture transactions with:
-  - USB-to-UART adapter (CP2102, FTDI, etc.) + Wireshark/putty logging
-  - Logic analyzer (Saleae, DSLogic) on TX/RX lines during programming
-- Likely protocol: Simple command/response over 9600-115200 baud
-- Python implementation: Use `pyserial` library (add to requirements.txt)
-- Consider adding progress bar for radio programming operations
+### UART Programming Implementation Plan
+
+#### Phase 1: Protocol Research & Discovery
+1. **Documentation Review**
+   - [ ] Search for PMR-171 service manual or programming documentation
+   - [ ] Check manufacturer website for SDK or programming cable specs
+   - [ ] Review FCC filings for technical details
+   - [ ] Search online forums (RadioReference, QRZ, etc.) for protocol information
+
+2. **Hardware Setup**
+   - [ ] Acquire PMR-171 programming cable (USB/UART adapter)
+   - [ ] Identify cable pinout (TX, RX, GND, power)
+   - [ ] Test cable with factory programming software
+   - [ ] Document cable specifications (chipset, voltage levels)
+
+3. **Packet Capture & Analysis**
+   - [ ] **Option A: Software Interception**
+     - Install Wireshark or similar packet capture tool
+     - Monitor USB/COM port during factory software operation
+     - Capture full programming session (read + write operations)
+   - [ ] **Option B: Hardware Interception**
+     - Use logic analyzer (Saleae Logic, DSLogic, etc.)
+     - Connect to UART TX/RX lines between cable and radio
+     - Capture at multiple baud rates (9600, 19200, 38400, 57600, 115200)
+     - Record timing diagrams and signal levels
+   - [ ] **Capture Scenarios**:
+     - Radio identification/handshake
+     - Full codeplug read
+     - Single channel read
+     - Full codeplug write
+     - Single channel write
+     - Verify operation
+     - Error conditions
+
+4. **Protocol Analysis**
+   - [ ] Identify communication parameters:
+     - Baud rate (test common rates)
+     - Data bits (typically 8)
+     - Parity (None, Even, Odd)
+     - Stop bits (1 or 2)
+     - Flow control (None, RTS/CTS, XON/XOFF)
+   - [ ] Analyze packet structure:
+     - Header format (start bytes, sync patterns)
+     - Command codes (read, write, verify, etc.)
+     - Address/memory location format
+     - Data payload format
+     - Checksum/CRC algorithm (CRC-16, CRC-32, simple sum, XOR)
+     - Footer/terminator bytes
+   - [ ] Document command set:
+     - Initialization/handshake commands
+     - Read commands (single byte, block read)
+     - Write commands (single byte, block write)
+     - Radio info query (model, firmware version, serial number)
+     - Memory map structure
+   - [ ] Reverse engineer checksums:
+     - Test with modified packets
+     - Identify algorithm (CRC polynomial, initial value, XOR out)
+     - Implement checksum calculation in Python
+
+#### Phase 2: Protocol Implementation
+1. **Python Serial Communication Setup**
+   - [ ] Add `pyserial` to requirements.txt
+   - [ ] Create `uart_interface.py` module
+   - [ ] Implement serial port detection and enumeration
+   - [ ] Add connection error handling (timeouts, disconnects)
+   - [ ] Implement packet framing (start/stop detection)
+   - [ ] Add logging for debugging (hex dump of all packets)
+
+2. **Low-Level Protocol Functions**
+   - [ ] Implement checksum calculation
+   - [ ] Create packet builder (header + data + checksum)
+   - [ ] Create packet parser (validate and extract data)
+   - [ ] Add retry logic for failed commands
+   - [ ] Implement timeouts and error recovery
+
+3. **Radio Communication Commands**
+   - [ ] Radio identification/handshake
+   - [ ] Query radio info (model, firmware version)
+   - [ ] Read memory block (with address and length)
+   - [ ] Write memory block (with verification)
+   - [ ] Read full codeplug
+   - [ ] Write full codeplug
+   - [ ] Verify codeplug after write
+
+#### Phase 3: Hardware-in-the-Loop Testing
+1. **Test Equipment Setup**
+   - [ ] Connect PMR-171 radio via programming cable
+   - [ ] Set up test environment with known good codeplug
+   - [ ] Create backup of original radio configuration
+   - [ ] Document radio serial number and firmware version
+
+2. **Read Operation Testing**
+   - [ ] Test radio identification
+   - [ ] Read single memory location
+   - [ ] Read memory block (small, then progressively larger)
+   - [ ] Read full codeplug
+   - [ ] Compare read data with factory software backup
+   - [ ] Verify data integrity (checksums, format)
+
+3. **Write Operation Testing (Critical - Start Small!)**
+   - [ ] **Safety First**: 
+     - Test on non-critical memory (scratch area if available)
+     - Always backup before writing
+     - Never write to bootloader or calibration areas
+   - [ ] Write single byte to test area
+   - [ ] Read back and verify
+   - [ ] Write single channel data
+   - [ ] Read back and verify channel works on radio
+   - [ ] Write full codeplug (after extensive read testing)
+   - [ ] Verify radio functionality after write
+
+4. **Edge Case Testing**
+   - [ ] Test with empty channels
+   - [ ] Test with maximum channel count
+   - [ ] Test with long channel names
+   - [ ] Test with split frequencies (RX ≠ TX)
+   - [ ] Test with all modes (FM, AM, SSB, DMR, etc.)
+   - [ ] Test with CTCSS/DCS tones
+   - [ ] Test error recovery (disconnect during write, corrupt data)
+
+#### Phase 4: GUI Integration
+1. **Programming Interface**
+   - [ ] Add "Program Radio" menu item
+   - [ ] Create COM port selection dialog
+   - [ ] Add "Read from Radio" button with progress bar
+   - [ ] Add "Write to Radio" button with confirmation dialog
+   - [ ] Implement "Compare Radio vs File" diff view
+   - [ ] Add "Backup Radio" quick save function
+
+2. **Safety Features**
+   - [ ] Warn before overwriting radio
+   - [ ] Require user confirmation for write operations
+   - [ ] Validate codeplug before writing (frequency ranges, field values)
+   - [ ] Show summary of changes before writing
+   - [ ] Create automatic backup before each write
+   - [ ] Implement write verification with retry on failure
+
+3. **User Experience**
+   - [ ] Real-time progress indicators
+   - [ ] Clear error messages (with troubleshooting hints)
+   - [ ] Connection status indicator
+   - [ ] Programming log viewer (for debugging)
+   - [ ] Cancel operation support (safe abort)
+
+#### Phase 5: Documentation & Validation
+1. **Protocol Documentation**
+   - [ ] Create protocol specification document
+   - [ ] Document all command codes and responses
+   - [ ] Create memory map diagram
+   - [ ] Document checksum algorithm with examples
+   - [ ] Add packet format diagrams
+
+2. **User Documentation**
+   - [ ] Write programming guide
+   - [ ] Document cable requirements
+   - [ ] Create troubleshooting guide
+   - [ ] Add FAQ section
+   - [ ] Include video tutorial
+
+3. **Testing & Validation**
+   - [ ] Test on multiple PMR-171 radios (different firmware versions)
+   - [ ] Verify with community testers
+   - [ ] Create automated test suite for protocol functions
+   - [ ] Document any limitations or known issues
+
+#### Tools & Resources Needed
+- **Hardware**:
+  - PMR-171 radio (primary test unit)
+  - PMR-171 programming cable (USB-UART adapter)
+  - Optional: Spare PMR-171 for destructive testing
+  - Optional: Logic analyzer (Saleae Logic 8, DSLogic Plus, etc.)
+  - Optional: USB protocol analyzer
+  
+- **Software**:
+  - Factory programming software (for packet capture)
+  - Wireshark or similar packet capture tool
+  - Logic analyzer software (Saleae Logic, sigrok/PulseView)
+  - Python with pyserial library
+  - Hex editor (HxD, 010 Editor)
+  
+- **Documentation**:
+  - Service manual (if available)
+  - Programming cable pinout
+  - Known good codeplug files (from D:\Radio\Guohetec)
+
+#### Risk Mitigation
+- **CRITICAL**: Always backup radio before any write operations
+- **CRITICAL**: Never write to bootloader or calibration areas without documentation
+- **CRITICAL**: Verify checksums before writing to prevent bricking
+- Start with read-only operations until protocol is fully understood
+- Test on non-critical memory areas first
+- Keep factory programming software available as fallback
+- Document recovery procedures in case of programming failure
+- Consider having a spare radio for testing risky operations
 
 ### CSV Export Considerations
 - Map PMR-171 fields to human-readable column names
@@ -153,7 +356,26 @@ This allows:
 
 ## Session History
 
-### January 17, 2026
+### January 17-18, 2026 (Evening Session)
+- **Focus**: JSON format validation and UART programming planning
+- **Accomplishments**:
+  - Created comprehensive test suite: `tests/test_pmr171_format_validation.py` with 24 passing tests
+  - Validated JSON format compatibility with factory software (MODE_TEST.json)
+  - All tests confirm correct encoding: frequencies, modes, channel structure, field types
+  - Reviewed actual factory software output from D:\Radio\Guohetec\PMR-171_20260116.json
+  - Created detailed 5-phase UART programming implementation plan
+  - Documented protocol research methodology (packet capture, hardware interception)
+  - Outlined hardware-in-the-loop testing approach with safety protocols
+- **Key Findings**:
+  - Factory software uses callFormat=0 for analog, callFormat=2 for digital channels
+  - Confirmed dual VFO architecture (vfoaFrequency vs vfobFrequency)
+  - Identified need for hardware testing with actual PMR-171 radio
+- **Next Steps**: 
+  - Cross-validate generated JSON with factory software files
+  - Begin UART protocol research phase
+  - Acquire programming cable and test equipment
+
+### January 17, 2026 (Earlier Session)
 - **Focus**: Channel renumbering feature debugging
 - **Outcome**: Feature removed after multiple failed attempts
 - **Lessons**: tkinter.Treeview may have hidden refresh issues; simpler approaches (read-only) preferred
@@ -176,6 +398,7 @@ This allows:
 - [x] Automatic frequency formatting with live tree view updates (Jan 2026)
 - [x] Channel validation with visual warnings for out-of-band frequencies and invalid tones (Jan 2026)
 - [x] Bulk channel operations with multi-select, right-click context menu, delete and duplicate (Jan 2026)
+- [x] Comprehensive PMR-171 JSON format validation tests - 24 tests verifying compatibility with factory programming software (Jan 2026)
 
 ---
 
