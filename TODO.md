@@ -40,7 +40,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 
 ## Low Priority / Nice to Have
 
-- [ ] **Undo/Redo**: Implement edit history for reverting changes
+- [x] **Undo/Redo**: Implement edit history for reverting changes (Jan 2026)
 - [ ] **Channel zones/groups**: Organize channels into user-defined groups
 - [ ] **Import/Export presets**: Save and load channel configurations
 - [ ] **Frequency calculator**: Repeater offset calculator and tone lookup
@@ -154,6 +154,7 @@ This allows:
 
 ## Completed Items
 
+- [x] Undo/Redo with Ctrl+Z/Ctrl+Y support - state snapshot system for all edit operations (Jan 2026)
 - [x] Professional GUI with MOTORTRBO/ASTRO 25 styling (Jan 2026)
 - [x] Live channel name editing without cursor reset (Jan 2026)
 - [x] Column selection and ordering (Jan 2026)
@@ -172,4 +173,4 @@ This allows:
 
 *Use this file to track development tasks and ideas. Move completed items to the "Completed Items" section with completion date.*
 
-Last Updated: January 17, 2026
+Last Updated: January 18, 2026

@@ -1,12 +1,13 @@
 """Professional radio programming GUI for channel data"""
 
+import copy
 import csv
 import json
 import struct
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime
 
 from ..utils.validation import validate_channel, get_frequency_band_name
@@ -69,6 +70,11 @@ class ChannelTableViewer:
         self.channel_tree = None
         self.detail_notebook = None
         
+        # Undo/Redo stacks - each entry is a deep copy of self.channels
+        self.undo_stack: List[Dict[str, Dict]] = []
+        self.redo_stack: List[Dict[str, Dict]] = []
+        self.max_undo_levels = 50  # Limit memory usage
+        
         # Available columns for tree view (ordered as desired)
         self.available_columns = {
             'name': {'label': 'Name', 'width': 120, 'extract': lambda ch: ch.get('channelName', '').rstrip('\u0000').strip() or "(empty)"},
@@ -112,6 +118,30 @@ class ChannelTableViewer:
             return f"{value / 10:.1f}"
         else:
             # DCS code
+            return str(value)
+    
+    def _ctcss_value_to_display(self, value: int) -> str:
+        """Convert CTCSS/DCS integer value to dropdown-compatible display string
+        
+        PMR-171 format:
+        - 0 = Off
+        - 670-2503 = CTCSS tone (value / 10 = Hz, e.g., 1000 = 100.0 Hz)
+        - DCS codes stored differently
+        
+        Args:
+            value: Integer value from channel data
+            
+        Returns:
+            Display string matching dropdown options (e.g., "Off", "100.0", "D023N")
+        """
+        if value == 0:
+            return "Off"
+        elif 670 <= value <= 2503:
+            # CTCSS tone - convert to Hz string
+            tone_hz = value / 10
+            return f"{tone_hz:.1f}"
+        else:
+            # Try to match as DCS code or return raw value
             return str(value)
     
     @staticmethod
@@ -257,6 +287,15 @@ class ChannelTableViewer:
                        foreground=self.colors['header_fg'],
                        font=('Arial', 10, 'bold'),
                        padding=8)
+        
+        # Configure checkbox styles for better visual indication
+        # Default (unselected) state - gray indicator box
+        style.configure('Toggle.TCheckbutton',
+                       font=('Arial', 9))
+        style.map('Toggle.TCheckbutton',
+                 indicatorcolor=[('selected', '#0066CC'), ('!selected', '#FFFFFF')],
+                 indicatorrelief=[('selected', 'flat'), ('!selected', 'sunken')],
+                 background=[('active', '#E8E8E8')])
 
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True)
@@ -345,6 +384,10 @@ class ChannelTableViewer:
         # Edit menu
         edit_menu = tk.Menu(menubar, tearoff=0)
         menubar.add_cascade(label="Edit", menu=edit_menu)
+        self.edit_menu = edit_menu  # Store reference for updating undo/redo state
+        edit_menu.add_command(label="Undo", command=self._undo, accelerator="Ctrl+Z")
+        edit_menu.add_command(label="Redo", command=self._redo, accelerator="Ctrl+Y")
+        edit_menu.add_separator()
         edit_menu.add_command(label="Delete Selected Channels", command=self._bulk_delete, accelerator="Delete")
         edit_menu.add_command(label="Duplicate Selected Channels", command=self._bulk_duplicate, accelerator="Ctrl+D")
         
@@ -356,8 +399,128 @@ class ChannelTableViewer:
         # Bind keyboard shortcuts
         self.root.bind('<Control-o>', lambda e: self._open_file())
         self.root.bind('<Control-s>', lambda e: self._save_file())
+        self.root.bind('<Control-z>', lambda e: self._undo())
+        self.root.bind('<Control-y>', lambda e: self._redo())
         self.root.bind('<Delete>', lambda e: self._bulk_delete())
         self.root.bind('<Control-d>', lambda e: self._bulk_duplicate())
+        
+        # Update undo/redo menu state
+        self._update_undo_redo_menu()
+    
+    def _save_state(self, description: str = ""):
+        """Save current state to undo stack before making changes
+        
+        Args:
+            description: Optional description of the action (for debugging)
+        """
+        # Deep copy current channels state
+        state_copy = copy.deepcopy(self.channels)
+        self.undo_stack.append(state_copy)
+        
+        # Limit undo stack size
+        if len(self.undo_stack) > self.max_undo_levels:
+            self.undo_stack.pop(0)
+        
+        # Clear redo stack when new action is performed
+        self.redo_stack.clear()
+        
+        # Update menu state
+        self._update_undo_redo_menu()
+    
+    def _undo(self):
+        """Undo the last action by restoring previous state"""
+        if not self.undo_stack:
+            return
+        
+        # Save current state to redo stack
+        current_state = copy.deepcopy(self.channels)
+        self.redo_stack.append(current_state)
+        
+        # Restore previous state
+        self.channels = self.undo_stack.pop()
+        
+        # Rebuild tree with restored data
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        
+        # Re-populate current channel's tabs if one is selected
+        if self.current_channel and self.current_channel in self.channels:
+            ch_data = self.channels[self.current_channel]
+            ch_name = ch_data['channelName'].rstrip('\u0000').strip() or "(empty)"
+            self.detail_header.config(text=f"Channel {self.current_channel} - {ch_name}")
+            self._populate_general_tab(ch_data)
+            self._populate_freq_tab(ch_data)
+            self._populate_dmr_tab(ch_data)
+            self._populate_advanced_tab(ch_data)
+            self._populate_raw_tab(ch_data)
+        elif self.current_channel and self.current_channel not in self.channels:
+            # Channel was deleted, select first available
+            self.current_channel = None
+            first_channel = self._get_first_channel_item()
+            if first_channel:
+                self.channel_tree.selection_set(first_channel)
+                self.channel_tree.focus(first_channel)
+                self.channel_tree.event_generate('<<TreeviewSelect>>')
+        
+        # Update menu and status
+        self._update_undo_redo_menu()
+        self.status_label.config(text=f"Undo | Total Channels: {len(self.channels)}")
+    
+    def _redo(self):
+        """Redo the last undone action"""
+        if not self.redo_stack:
+            return
+        
+        # Save current state to undo stack
+        current_state = copy.deepcopy(self.channels)
+        self.undo_stack.append(current_state)
+        
+        # Restore redo state
+        self.channels = self.redo_stack.pop()
+        
+        # Rebuild tree with restored data
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        
+        # Re-populate current channel's tabs if one is selected
+        if self.current_channel and self.current_channel in self.channels:
+            ch_data = self.channels[self.current_channel]
+            ch_name = ch_data['channelName'].rstrip('\u0000').strip() or "(empty)"
+            self.detail_header.config(text=f"Channel {self.current_channel} - {ch_name}")
+            self._populate_general_tab(ch_data)
+            self._populate_freq_tab(ch_data)
+            self._populate_dmr_tab(ch_data)
+            self._populate_advanced_tab(ch_data)
+            self._populate_raw_tab(ch_data)
+        elif self.current_channel and self.current_channel not in self.channels:
+            # Channel was deleted, select first available
+            self.current_channel = None
+            first_channel = self._get_first_channel_item()
+            if first_channel:
+                self.channel_tree.selection_set(first_channel)
+                self.channel_tree.focus(first_channel)
+                self.channel_tree.event_generate('<<TreeviewSelect>>')
+        
+        # Update menu and status
+        self._update_undo_redo_menu()
+        self.status_label.config(text=f"Redo | Total Channels: {len(self.channels)}")
+    
+    def _update_undo_redo_menu(self):
+        """Update the Edit menu undo/redo items based on stack state"""
+        if not hasattr(self, 'edit_menu'):
+            return
+        
+        # Update Undo menu item (index 0)
+        if self.undo_stack:
+            self.edit_menu.entryconfig(0, state='normal', 
+                                       label=f"Undo ({len(self.undo_stack)})")
+        else:
+            self.edit_menu.entryconfig(0, state='disabled', label="Undo")
+        
+        # Update Redo menu item (index 1)
+        if self.redo_stack:
+            self.edit_menu.entryconfig(1, state='normal',
+                                       label=f"Redo ({len(self.redo_stack)})")
+        else:
+            self.edit_menu.entryconfig(1, state='disabled', label="Redo")
     
     def _open_file(self):
         """Open a JSON channel file"""
@@ -614,15 +777,36 @@ class ChannelTableViewer:
             if reselect_channel_id and ch_id == reselect_channel_id:
                 item_to_select = item_id
         
-        # Reselect item if requested
+        # Reselect item if requested, or auto-select first channel if none selected
         if item_to_select:
             self.channel_tree.selection_set(item_to_select)
             self.channel_tree.focus(item_to_select)
             self.channel_tree.see(item_to_select)
+        elif not self.current_channel:
+            # Auto-select first channel on initial load
+            first_channel = self._get_first_channel_item()
+            if first_channel:
+                self.channel_tree.selection_set(first_channel)
+                self.channel_tree.focus(first_channel)
+                self.channel_tree.see(first_channel)
+                # Trigger selection event to populate tabs
+                self.channel_tree.event_generate('<<TreeviewSelect>>')
         
         # Update status if it exists
         if hasattr(self, 'status_label'):
             self.status_label.config(text=f"Total Channels: {len(self.channels)} | Ready")
+    
+    def _get_first_channel_item(self):
+        """Get the first channel item in the tree (skip group nodes)"""
+        # Check Analog Channels group first
+        for group_node in self.channel_tree.get_children():
+            children = self.channel_tree.get_children(group_node)
+            if children:
+                # Return first child that has tags (is a channel, not a group)
+                for child in children:
+                    if self.channel_tree.item(child, 'tags'):
+                        return child
+        return None
     
     def _create_detail_panel(self, parent):
         """Create tabbed detail panel (right side)"""
@@ -866,8 +1050,11 @@ class ChannelTableViewer:
         for widget in self.freq_tab.winfo_children():
             widget.destroy()
         
-        # Create scrollable frame
-        canvas = tk.Canvas(self.freq_tab)
+        # Check if this is a DMR channel
+        is_dmr = ch_data.get('chType', 0) == 1
+        
+        # Create scrollable frame with matching background
+        canvas = tk.Canvas(self.freq_tab, bg='#F5F5F5', highlightthickness=0)
         scrollbar = ttk.Scrollbar(self.freq_tab, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -901,20 +1088,33 @@ class ChannelTableViewer:
         rx_entry.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
         rx_row += 1
         
-        # RX CTCSS/DCS
+        # RX CTCSS/DCS (disabled for DMR channels)
         ttk.Label(rx_frame, text="RX CTCSS/DCS:", font=('Arial', 9, 'bold')).grid(
             row=rx_row, column=0, sticky=tk.W, padx=5, pady=5)
-        rx_ctcss = ch_data['rxCtcss']
-        if rx_ctcss == 0:
-            rx_ctcss_display = "Off"
-        elif rx_ctcss >= 1000:
-            rx_ctcss_display = f"{rx_ctcss / 10:.1f}"
+        rx_ctcss = ch_data.get('rxCtcss', 0)
+        rx_ctcss_display = self._ctcss_value_to_display(rx_ctcss)
+        if is_dmr:
+            # Use tk.Entry for disabled state with gray background
+            rx_ctcss_entry = tk.Entry(rx_frame, width=20, bg='#E0E0E0', fg='#808080')
+            rx_ctcss_entry.insert(0, rx_ctcss_display)
+            rx_ctcss_entry.config(state='disabled', disabledbackground='#E0E0E0', disabledforeground='#808080')
+            rx_ctcss_entry.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
         else:
-            rx_ctcss_display = str(rx_ctcss)
-        rx_ctcss_var = tk.StringVar(value=rx_ctcss_display)
-        rx_ctcss_combo = ttk.Combobox(rx_frame, textvariable=rx_ctcss_var, 
-                                      values=self.CTCSS_DCS_COMBINED, width=17)
-        rx_ctcss_combo.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
+            rx_ctcss_combo = ttk.Combobox(rx_frame, values=self.CTCSS_DCS_COMBINED, width=17)
+            rx_ctcss_combo.set(rx_ctcss_display)
+            rx_ctcss_combo.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
+        rx_row += 1
+        
+        # RX Color Code (only for DMR channels)
+        ttk.Label(rx_frame, text="RX Color Code:", font=('Arial', 9, 'bold')).grid(
+            row=rx_row, column=0, sticky=tk.W, padx=5, pady=5)
+        rx_cc_value = ch_data.get('rxCc', 0)
+        rx_cc_spin = tk.Spinbox(rx_frame, from_=0, to=15, width=17)
+        rx_cc_spin.delete(0, tk.END)
+        rx_cc_spin.insert(0, str(rx_cc_value))
+        if not is_dmr:
+            rx_cc_spin.config(state='disabled', disabledbackground='#E0E0E0', disabledforeground='#808080')
+        rx_cc_spin.grid(row=rx_row, column=1, sticky=tk.W, padx=5, pady=5)
         rx_row += 1
         
         # ===== RIGHT COLUMN: TX Settings =====
@@ -935,20 +1135,33 @@ class ChannelTableViewer:
         tx_entry.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
         tx_row += 1
         
-        # TX CTCSS/DCS
+        # TX CTCSS/DCS (disabled for DMR channels)
         ttk.Label(tx_frame, text="TX CTCSS/DCS:", font=('Arial', 9, 'bold')).grid(
             row=tx_row, column=0, sticky=tk.W, padx=5, pady=5)
-        tx_ctcss = ch_data.get('txCtcss', ch_data['rxCtcss'])
-        if tx_ctcss == 0:
-            tx_ctcss_display = "Off"
-        elif tx_ctcss >= 1000:
-            tx_ctcss_display = f"{tx_ctcss / 10:.1f}"
+        tx_ctcss = ch_data.get('txCtcss', ch_data.get('rxCtcss', 0))
+        tx_ctcss_display = self._ctcss_value_to_display(tx_ctcss)
+        if is_dmr:
+            # Use tk.Entry for disabled state with gray background
+            tx_ctcss_entry = tk.Entry(tx_frame, width=20, bg='#E0E0E0', fg='#808080')
+            tx_ctcss_entry.insert(0, tx_ctcss_display)
+            tx_ctcss_entry.config(state='disabled', disabledbackground='#E0E0E0', disabledforeground='#808080')
+            tx_ctcss_entry.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
         else:
-            tx_ctcss_display = str(tx_ctcss)
-        tx_ctcss_var = tk.StringVar(value=tx_ctcss_display)
-        tx_ctcss_combo = ttk.Combobox(tx_frame, textvariable=tx_ctcss_var,
-                                      values=self.CTCSS_DCS_COMBINED, width=17)
-        tx_ctcss_combo.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
+            tx_ctcss_combo = ttk.Combobox(tx_frame, values=self.CTCSS_DCS_COMBINED, width=17)
+            tx_ctcss_combo.set(tx_ctcss_display)
+            tx_ctcss_combo.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
+        tx_row += 1
+        
+        # TX Color Code (only for DMR channels)
+        ttk.Label(tx_frame, text="TX Color Code:", font=('Arial', 9, 'bold')).grid(
+            row=tx_row, column=0, sticky=tk.W, padx=5, pady=5)
+        tx_cc_value = ch_data.get('txCc', 0)
+        tx_cc_spin = tk.Spinbox(tx_frame, from_=0, to=15, width=17)
+        tx_cc_spin.delete(0, tk.END)
+        tx_cc_spin.insert(0, str(tx_cc_value))
+        if not is_dmr:
+            tx_cc_spin.config(state='disabled', disabledbackground='#E0E0E0', disabledforeground='#808080')
+        tx_cc_spin.grid(row=tx_row, column=1, sticky=tk.W, padx=5, pady=5)
         tx_row += 1
         
         # ===== CENTER COLUMN: Copy Tools =====
@@ -1130,26 +1343,6 @@ class ChannelTableViewer:
         
         row = 0 if is_dmr else 1
         
-        # Call ID
-        ttk.Label(frame, text="Call ID:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        call_id = self.id_from_bytes(
-            ch_data['callId1'], ch_data['callId2'],
-            ch_data['callId3'], ch_data['callId4']
-        )
-        if not is_dmr:
-            # Use tk.Entry for better styling control when disabled
-            call_entry = tk.Entry(frame, width=20, bg='#E0E0E0', fg='#808080', 
-                                state='disabled', disabledbackground='#E0E0E0', 
-                                disabledforeground='#808080')
-        else:
-            call_entry = ttk.Entry(frame, width=20)
-        call_entry.insert(0, call_id)
-        if not is_dmr:
-            call_entry.config(state='disabled')
-        call_entry.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
-        row += 1
-        
         # Own ID
         ttk.Label(frame, text="Own ID:", font=('Arial', 9, 'bold')).grid(
             row=row, column=0, sticky=tk.W, padx=10, pady=5)
@@ -1157,70 +1350,96 @@ class ChannelTableViewer:
             ch_data['ownId1'], ch_data['ownId2'],
             ch_data['ownId3'], ch_data['ownId4']
         )
-        if not is_dmr:
-            own_entry = tk.Entry(frame, width=20, bg='#E0E0E0', fg='#808080',
-                               state='disabled', disabledbackground='#E0E0E0',
-                               disabledforeground='#808080')
-        else:
-            own_entry = ttk.Entry(frame, width=20)
+        # Use tk.Entry for both cases for consistent behavior
+        own_entry = tk.Entry(frame, width=20)
         own_entry.insert(0, own_id)
         if not is_dmr:
-            own_entry.config(state='disabled')
+            own_entry.config(state='disabled', bg='#E0E0E0', fg='#808080',
+                           disabledbackground='#E0E0E0', disabledforeground='#808080')
         own_entry.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
         row += 1
         
-        # RX Color Code
-        ttk.Label(frame, text="RX Color Code:", font=('Arial', 9, 'bold')).grid(
+        # Talkgroup/Private Call (from callId bytes, 0-16777215)
+        ttk.Label(frame, text="Talkgroup/Private Call:", font=('Arial', 9, 'bold')).grid(
             row=row, column=0, sticky=tk.W, padx=10, pady=5)
+        # Talkgroup is stored in callId1-4 bytes (same as DMR ID encoding)
+        tg_value_str = self.id_from_bytes(
+            ch_data.get('callId1', 0), ch_data.get('callId2', 0),
+            ch_data.get('callId3', 0), ch_data.get('callId4', 0)
+        )
+        tg_value = int(tg_value_str) if tg_value_str != '-' else 0
         if not is_dmr:
-            rx_cc_spin = tk.Spinbox(frame, from_=0, to=15, width=15,
-                                   bg='#E0E0E0', fg='#808080', state='disabled',
-                                   disabledbackground='#E0E0E0', disabledforeground='#808080')
-            rx_cc_spin.delete(0, tk.END)
-            rx_cc_spin.insert(0, str(ch_data.get('rxCc', 0)))
-        else:
-            rx_cc_var = tk.IntVar(value=ch_data.get('rxCc', 0))
-            rx_cc_spin = ttk.Spinbox(frame, from_=0, to=15, textvariable=rx_cc_var, width=18)
-        rx_cc_spin.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
-        row += 1
-        
-        # Timeslot
-        ttk.Label(frame, text="Timeslot:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        timeslot_var = tk.IntVar(value=ch_data.get('timeslot', 1))
-        timeslot_combo = ttk.Combobox(frame, values=[1, 2], state='readonly', width=17)
-        timeslot_combo.set(timeslot_var.get())
-        if not is_dmr:
-            timeslot_combo.state(['disabled'])
-        timeslot_combo.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
-        row += 1
-        
-        # Talk Group (0-65535)
-        ttk.Label(frame, text="Talk Group:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        tg_value = max(0, min(65535, ch_data.get('talkgroup', 0)))  # Clamp to valid range
-        if not is_dmr:
-            tg_entry = tk.Entry(frame, width=20, bg='#E0E0E0', fg='#808080',
-                              state='disabled', disabledbackground='#E0E0E0',
-                              disabledforeground='#808080')
+            tg_entry = tk.Entry(frame, width=20, bg='#E0E0E0', fg='#808080')
             tg_entry.insert(0, str(tg_value))
+            tg_entry.config(state='disabled', disabledbackground='#E0E0E0', disabledforeground='#808080')
         else:
-            tg_var = tk.IntVar(value=tg_value)
-            tg_spinbox = ttk.Spinbox(frame, from_=0, to=65535, textvariable=tg_var, width=18)
-            tg_entry = tg_spinbox
+            # Use tk.Spinbox for consistent behavior and insert value directly
+            tg_entry = tk.Spinbox(frame, from_=0, to=16777215, width=18)
+            tg_entry.delete(0, tk.END)
+            tg_entry.insert(0, str(tg_value))
         tg_entry.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
         row += 1
         
-        # Emergency Alarm
-        ttk.Label(frame, text="Emergency Alarm:", font=('Arial', 9, 'bold')).grid(
+        # Timeslot - use Spinbox with increment buttons like other numerical fields
+        ttk.Label(frame, text="Timeslot:", font=('Arial', 9, 'bold')).grid(
             row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        emergency_var = tk.BooleanVar(value=bool(ch_data.get('emergency', 0)))
-        emergency_check = ttk.Checkbutton(frame, variable=emergency_var)
-        if ch_data.get('emergency', 0):
+        # Slot is stored as 1 or 2 in data, sanitize to only allow 1 or 2
+        raw_slot = ch_data.get('slot', 1)
+        slot_value = max(1, min(2, raw_slot)) if raw_slot != 0 else 1  # Default 0 to TS1
+        if is_dmr:
+            timeslot_spin = tk.Spinbox(frame, from_=1, to=2, width=18)
+            timeslot_spin.delete(0, tk.END)
+            timeslot_spin.insert(0, str(slot_value))
+        else:
+            # Disabled state - gray background
+            timeslot_spin = tk.Spinbox(frame, from_=1, to=2, width=18)
+            timeslot_spin.delete(0, tk.END)
+            timeslot_spin.insert(0, str(slot_value))
+            timeslot_spin.config(state='disabled', disabledbackground='#E0E0E0', 
+                               disabledforeground='#808080')
+        timeslot_spin.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        row += 1
+        
+        # Emergency Alarm - with ON/OFF indicator like Advanced tab
+        ttk.Label(frame, text="Emergency Alarm:", font=('Arial', 9, 'bold')).grid(
+            row=row, column=0, sticky=tk.W, padx=10, pady=8)
+        
+        # Container frame for checkbox and status label
+        emergency_frame = ttk.Frame(frame)
+        emergency_frame.grid(row=row, column=1, sticky=tk.W, padx=10, pady=8)
+        
+        is_emergency_enabled = bool(ch_data.get('emergency', 0))
+        emergency_var = tk.BooleanVar(value=is_emergency_enabled)
+        
+        # Status indicator label (changes color based on state)
+        emergency_status = tk.Label(
+            emergency_frame,
+            text="ON" if is_emergency_enabled else "OFF",
+            font=('Arial', 9, 'bold'),
+            fg='#008800' if is_emergency_enabled else '#888888',
+            width=4
+        )
+        emergency_status.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # Checkbox with toggle style
+        emergency_check = ttk.Checkbutton(emergency_frame, variable=emergency_var, style='Toggle.TCheckbutton')
+        if is_emergency_enabled:
             emergency_check.state(['selected'])
+        else:
+            emergency_check.state(['!selected'])
         if not is_dmr:
             emergency_check.state(['disabled'])
-        emergency_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+            emergency_status.config(fg='#AAAAAA')  # Grayed out when disabled
+        
+        # Update status label when checkbox changes
+        def on_emergency_toggle(*args):
+            if emergency_var.get():
+                emergency_status.config(text="ON", fg='#008800')
+            else:
+                emergency_status.config(text="OFF", fg='#888888')
+        
+        emergency_var.trace_add('write', on_emergency_toggle)
+        emergency_check.pack(side=tk.LEFT)
         row += 1
     
     def _populate_advanced_tab(self, ch_data):
@@ -1234,63 +1453,79 @@ class ChannelTableViewer:
         
         row = 0
         
+        # Helper function to create a toggle row with clear visual state
+        def create_toggle_row(parent, row_num, label_text, data_key):
+            """Create a toggle checkbox row with clear On/Off indicator"""
+            ttk.Label(parent, text=label_text, font=('Arial', 9, 'bold')).grid(
+                row=row_num, column=0, sticky=tk.W, padx=10, pady=8)
+            
+            # Container frame for checkbox and status label
+            toggle_frame = ttk.Frame(parent)
+            toggle_frame.grid(row=row_num, column=1, sticky=tk.W, padx=10, pady=8)
+            
+            is_enabled = bool(ch_data.get(data_key, 0))
+            var = tk.BooleanVar(value=is_enabled)
+            
+            # Status indicator label (changes color based on state)
+            status_label = tk.Label(
+                toggle_frame,
+                text="ON" if is_enabled else "OFF",
+                font=('Arial', 9, 'bold'),
+                fg='#008800' if is_enabled else '#888888',
+                width=4
+            )
+            status_label.pack(side=tk.LEFT, padx=(0, 8))
+            
+            # Checkbox with toggle style
+            check = ttk.Checkbutton(toggle_frame, variable=var, style='Toggle.TCheckbutton')
+            if is_enabled:
+                check.state(['selected'])
+            else:
+                check.state(['!selected'])
+            
+            # Update status label when checkbox changes
+            def on_toggle(*args):
+                if var.get():
+                    status_label.config(text="ON", fg='#008800')
+                else:
+                    status_label.config(text="OFF", fg='#888888')
+            
+            var.trace_add('write', on_toggle)
+            check.pack(side=tk.LEFT)
+            
+            return var
+        
         # Scrambler
-        ttk.Label(frame, text="Scrambler:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        scrambler_var = tk.BooleanVar(value=bool(ch_data.get('scrambler', 0)))
-        scrambler_check = ttk.Checkbutton(frame, variable=scrambler_var)
-        # Force the checkbox to show proper state
-        if ch_data.get('scrambler', 0):
-            scrambler_check.state(['selected'])
-        scrambler_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        scrambler_var = create_toggle_row(frame, row, "Scrambler:", 'scrambler')
         row += 1
         
         # Compander
-        ttk.Label(frame, text="Compander:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        compander_var = tk.BooleanVar(value=bool(ch_data.get('compander', 0)))
-        compander_check = ttk.Checkbutton(frame, variable=compander_var)
-        if ch_data.get('compander', 0):
-            compander_check.state(['selected'])
-        compander_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        compander_var = create_toggle_row(frame, row, "Compander:", 'compander')
         row += 1
         
         # VOX
-        ttk.Label(frame, text="VOX:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        vox_var = tk.BooleanVar(value=bool(ch_data.get('vox', 0)))
-        vox_check = ttk.Checkbutton(frame, variable=vox_var)
-        if ch_data.get('vox', 0):
-            vox_check.state(['selected'])
-        vox_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        vox_var = create_toggle_row(frame, row, "VOX:", 'vox')
         row += 1
         
         # PTT ID
-        ttk.Label(frame, text="PTT ID:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        ptt_id_var = tk.BooleanVar(value=bool(ch_data.get('pttId', 0)))
-        ptt_id_check = ttk.Checkbutton(frame, variable=ptt_id_var)
-        if ch_data.get('pttId', 0):
-            ptt_id_check.state(['selected'])
-        ptt_id_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        ptt_id_var = create_toggle_row(frame, row, "PTT ID:", 'pttId')
         row += 1
         
         # Busy Lock
-        ttk.Label(frame, text="Busy Lock:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
-        busy_lock_var = tk.BooleanVar(value=bool(ch_data.get('busyLock', 0)))
-        busy_lock_check = ttk.Checkbutton(frame, variable=busy_lock_var)
-        if ch_data.get('busyLock', 0):
-            busy_lock_check.state(['selected'])
-        busy_lock_check.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        busy_lock_var = create_toggle_row(frame, row, "Busy Lock:", 'busyLock')
+        row += 1
+        
+        # Separator before non-toggle settings
+        ttk.Separator(frame, orient=tk.HORIZONTAL).grid(
+            row=row, column=0, columnspan=2, sticky='ew', padx=10, pady=15)
         row += 1
         
         # Scan List
         ttk.Label(frame, text="Scan List:", font=('Arial', 9, 'bold')).grid(
-            row=row, column=0, sticky=tk.W, padx=10, pady=5)
+            row=row, column=0, sticky=tk.W, padx=10, pady=8)
         scan_list_var = tk.IntVar(value=ch_data.get('scanList', 0))
         scan_list_spin = ttk.Spinbox(frame, from_=0, to=10, textvariable=scan_list_var, width=18)
-        scan_list_spin.grid(row=row, column=1, sticky=tk.W, padx=10, pady=5)
+        scan_list_spin.grid(row=row, column=1, sticky=tk.W, padx=10, pady=8)
         row += 1
     
     def _populate_raw_tab(self, ch_data):
@@ -1375,6 +1610,9 @@ class ChannelTableViewer:
         if not messagebox.askyesno("Confirm Delete", message, parent=self.root):
             return
         
+        # Save state before deletion for undo
+        self._save_state("Delete channels")
+        
         # Delete channels from data
         for ch_id in channel_ids:
             if ch_id in self.channels:
@@ -1401,6 +1639,9 @@ class ChannelTableViewer:
         
         if not channel_ids:
             return
+        
+        # Save state before duplication for undo
+        self._save_state("Duplicate channels")
         
         # Find next available channel ID
         existing_ids = [int(ch_id) for ch_id in self.channels.keys() if ch_id.isdigit()]
@@ -1545,6 +1786,34 @@ class ChannelTableViewer:
         current_tab = self.detail_notebook.index(self.detail_notebook.select())
         if current_tab < self.detail_notebook.index('end') - 1:
             self.detail_notebook.select(current_tab + 1)
+    
+    def _on_channel_name_changed(self):
+        """Handle channel name changes (called on each keystroke)"""
+        if self.current_channel and self.current_channel in self.channels:
+            new_name = self.current_channel_name.get()
+            # Update channel data
+            self.channels[self.current_channel]['channelName'] = new_name.ljust(16, '\u0000')[:16]
+            # Update header
+            display_name = new_name.strip() or "(empty)"
+            self.detail_header.config(text=f"Channel {self.current_channel} - {display_name}")
+    
+    def _on_channel_name_focus_out(self):
+        """Handle when channel name entry loses focus - rebuild tree and save state"""
+        if self.current_channel:
+            # Save state for undo (name change completed)
+            self._save_state("Rename channel")
+            self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+    
+    def _update_field(self, field_name, value):
+        """Update a field in the current channel's data"""
+        if self.current_channel and self.current_channel in self.channels:
+            # Save state before change for undo
+            self._save_state(f"Change {field_name}")
+            
+            self.channels[self.current_channel][field_name] = value
+            # Rebuild tree if channel type changed
+            if field_name == 'chType':
+                self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
     
 def view_channel_file(json_path: Path, title: str = None):
     """Load and view a PMR-171 JSON file
