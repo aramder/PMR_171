@@ -21,14 +21,14 @@ This document tracks planned features, enhancements, and known issues for the Co
 - **Status**: ✅ **VALIDATED AND PRODUCTION READY**
 - **Documentation**: See `docs/Complete_Ctcss_Mapping.md` and `D:/Radio/Guohetec/Testing/11_Validation_Results.md`
 
-### DCS (Digital Coded Squelch) Encoding - PENDING
-- [ ] **Build DCS mapping table**: Research required - 104+ codes to map (Est: 6-8 hours)
+### DCS (Digital Coded Squelch) Encoding - BACKBURNER
+- [ ] **Build DCS mapping table**: Pending radio firmware support (Est: 6-8 hours when available)
   - Configure each DCS code in manufacturer software (D023N, D023I, etc.)
   - Download from radio and record emitYayin/receiveYayin values
   - Build complete DCS code → yayin mapping table
   - Add DCS support to _tone_to_yayin()
-- **Note**: DCS codes likely use yayin values 100+ based on reserved gaps in CTCSS range
-- **Impact**: MEDIUM - CTCSS covers most amateur radio use cases; DCS needed for some repeaters
+- **Note**: DCS appears unsupported by current PMR-171 firmware. Revisit if firmware updates add DCS support.
+- **Impact**: LOW - CTCSS covers most use cases; DCS support pending hardware capability
 
 ### JSON Format Validation & Factory Software Compatibility
 - [x] **Comprehensive test suite**: 24 tests validating PMR-171 JSON format compatibility (Jan 2026)
@@ -36,7 +36,7 @@ This document tracks planned features, enhancements, and known issues for the Co
   - [x] Verified field value ranges match factory software - Perfect match!
   - [x] Frequency encoding validated - Mathematically correct big-endian Hz
   - [x] Field structure confirmed - All 40+ fields match factory format
-  - [ ] Test with actual radio hardware to confirm loadability - **Hardware testing needed**
+  - [x] Test with actual radio hardware to confirm loadability - ✅ Validated via UART test (Jan 19, 2026)
 - [x] **Additional JSON field analysis**: ✅ COMPLETE (Jan 2026)
   - [x] callFormat values documented: 0=analog, 2=digital (chType=0 vs chType=1)
   - [x] callId/ownId patterns documented: Big-endian 32-bit DMR IDs for digital channels
@@ -116,13 +116,41 @@ This document tracks planned features, enhancements, and known issues for the Co
   - [ ] **Create protocol specification document**: Document findings in `docs/PMR171_UART_PROTOCOL.md`
   - [ ] **Build packet examples**: Create annotated hex dumps showing packet structure
 
-- [ ] **Direct PMR-171 programming via UART**: Implement direct radio programming without needing manufacturer software
-  - Research UART command protocol (check PMR-171 manual for documentation)
-  - If undocumented, use UART adapter or logic analyzer to sniff programming transactions
-  - Implement Python UART communication (pyserial library)
-  - Add "Program Radio" menu option with COM port selection
-  - Include read/backup functionality to pull existing config from radio
-  - Error handling and validation before writing to radio
+- [x] **Direct PMR-171 programming via UART**: ✅ COMPLETE (January 19, 2026)
+  - [x] Implemented Python UART communication (pyserial library)
+  - [x] Added "Program Radio" menu option with COM port selection
+  - [x] Included read/backup functionality to pull existing config from radio
+  - [x] Error handling and validation before writing to radio
+  - **Location**: `codeplug_converter/radio/pmr171_uart.py`
+  - **GUI Integration**: Radio menu with Read/Write to Radio options
+  - **Test Script**: `tests/test_uart_read_write_verify.py`
+
+- [x] **UART Verification Test Script**: ✅ COMPLETE AND VALIDATED (January 19, 2026)
+  - **Location**: `tests/test_uart_read_write_verify.py`
+  - **Documentation**: `docs/UART_Testing.md`
+  - **Test Results**: 5/5 channels passed on initial validation run
+  - **Verified Functionality**:
+    - Reading and writing channel data
+    - Multiple modes (NFM, AM, USB, LSB, WFM)
+    - CTCSS tone encoding (RX/TX independent)
+    - Channel names up to 11 characters
+    - VHF and UHF frequencies
+    - Empty/unused channels vs programmed channels
+    - Automatic backup and restoration
+  - **Command-line Usage**:
+    ```bash
+    # Run with default settings (10 random channels)
+    python tests/test_uart_read_write_verify.py --port COM3 --yes
+    
+    # Run with specific channel count
+    python tests/test_uart_read_write_verify.py --channels 5 --verbose
+    
+    # Dry run (read-only, no writes)
+    python tests/test_uart_read_write_verify.py --dry-run
+    
+    # Run via pytest
+    python -m pytest tests/test_uart_read_write_verify.py -v
+    ```
 
 ### GUI Enhancements
 - [x] **Channel renumbering**: Add +/- buttons to allow users to change channel numbers and automatically re-sort the channel list
@@ -132,12 +160,34 @@ This document tracks planned features, enhancements, and known issues for the Co
 
 ## Medium Priority
 
+### Documentation Tasks
+- [x] **UART Reverse Engineering Report**: ✅ COMPLETE (January 19, 2026)
+  - Comprehensive technical report documenting the protocol discovery process
+  - Executive summary with key achievements and metrics
+  - Glossary of terms (suitable for table of contents)
+  - Methodology: 6-phase approach from reconnaissance to validation
+  - Hardware setup with connection parameters (DTR/RTS discovery)
+  - Packet structure analysis with field mappings
+  - Implementation architecture and code examples
+  - Challenges & solutions documented
+  - Lessons learned for future projects
+  - **Location**: `docs/UART_Reverse_Engineering_Report.md`
+  - **Format**: Markdown optimized for document/PowerPoint conversion
+
+- [ ] **Icon Generation Writeup**: Document the custom icon creation process (✅ Created: `docs/Icon_Generation.md`)
+  - [x] Icon design rationale and visual elements
+  - [x] Pillow/PIL generation script explanation
+  - [x] Multi-resolution icon generation (16px to 256px)
+  - [x] GUI integration with tkinter iconphoto()
+  - [x] Cross-platform considerations
+  - [x] Troubleshooting guide
+
 ### Features
 - [x] **CSV export**: Export channel data to CSV format for compatibility with other tools and spreadsheet analysis (Jan 2026)
 - [x] **Bulk channel operations**: Select multiple channels for batch editing, deletion, or copying (Jan 2026)
 
 ### Format Support
-- [ ] **Baofeng direct programming**: Read/write directly to Baofeng radios via USB cable (lower priority - may not be worth effort vs. using CHIRP)
+*No additional format support planned - CodeplugConverter focuses exclusively on PMR-171*
 
 
 ---
@@ -172,17 +222,6 @@ This document tracks planned features, enhancements, and known issues for the Co
   - May need platform-specific border implementation (Windows vs macOS vs Linux)
   - Test with different ttk themes to see if 'clam' theme is causing issues
 
-### Channel Renumbering (Deferred)
-**Issue**: Tree sorting doesn't update visually after changing channelLow in data structure
-- **Attempted Fixes** (Jan 17, 2026 session):
-  - Added +/- buttons and manual entry field for channel number editing
-  - Implemented `_apply_channel_number_change()` to update data and rebuild tree
-  - Added re-entrancy guards to prevent duplicate calls
-  - Tree rebuild logic sorts channels correctly by int(channelLow)
-  - Debug output confirmed: data updates, sorting happens, tree rebuilt
-- **Root Cause**: Unknown. Tree items inserted in sorted order but display doesn't reflect it
-- **Workaround**: Removed feature entirely. Channel number now read-only
-- **Future Investigation**: May need different approach (detach/reattach items vs full rebuild, or investigate tkinter.Treeview refresh behavior)
 
 ---
 
@@ -446,6 +485,25 @@ This allows:
 
 ## Session History
 
+### January 19, 2026 (Early Morning Session)
+- **Focus**: TODO cleanup and UART GUI testing
+- **Accomplishments**:
+  - Reviewed and cleaned up TODO.md
+  - Removed Baofeng support from roadmap (project focuses exclusively on PMR-171)
+  - Removed Channel Renumbering from known issues (now working)
+  - Moved DCS encoding to BACKBURNER status (pending firmware support)
+  - Marked hardware testing as complete (validated via UART test script Jan 19)
+  - Successfully launched GUI with UART connection to COM3
+- **Key Findings**:
+  - UART test script (`test_uart_read_write_verify.py`) validates hardware compatibility
+  - GUI connects to radio with DTR=True, RTS=True
+  - Direct UART programming is functional
+- **Remaining High Priority Items**:
+  - Update callFormat=2 for digital channels (minor)
+  - Complete UART Serial Transaction Analysis (5 phases - documentation only)
+- **Documentation Updated**:
+  - `TODO.md` - Comprehensive cleanup and status updates
+
 ### January 18, 2026 (Afternoon Session)
 - **Focus**: GUI filter improvements and DMR mode validation
 - **Accomplishments**:
@@ -533,6 +591,11 @@ This allows:
   - Validated with 25 test channels - 100% accuracy (Test 11)
   - Split tones, TX-only, RX-only all confirmed functional
   - Production ready with complete lookup tables
+- [x] **Direct PMR-171 UART Programming** (Jan 19, 2026)
+  - Python UART communication via pyserial
+  - GUI integration with Radio menu (Read/Write to Radio)
+  - Verified with test script: `tests/test_uart_read_write_verify.py`
+  - 5/5 channels passed validation
 
 ---
 
@@ -540,4 +603,4 @@ This allows:
 
 *Use this file to track development tasks and ideas. Move completed items to the "Completed Items" section with completion date.*
 
-Last Updated: January 18, 2026
+Last Updated: January 19, 2026

@@ -1,257 +1,273 @@
-# Radio Configuration Converter
+# PMR-171 CodeplugConverter
 
-A Python tool for converting various radio configuration formats to Guohetec PMR-171 JSON format and other formats.
+**An AI-Developed Programming Software for the Guohetec PMR-171 Handheld Radio**
 
-## Features
+[![AI Written](https://img.shields.io/badge/Code-100%25%20AI%20Written-blue)](#ai-development)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-green.svg)](https://python.org)
+[![License](https://img.shields.io/badge/License-Polyform%20NC-orange.svg)](LICENSE)
 
-- **Multiple Format Support**: 
-  - ✅ CHIRP .img binary files (Baofeng UV-5R, UV-82, UV-32, etc.)
-  - ✅ CSV import/export
-  - 🚧 Anytone .rdt files (planned)
-  - 🚧 Motorola .ctb/.xctb files (planned)
+---
 
-- **Smart Channel Management**:
-  - Automatic duplicate detection and removal
-  - Multi-file merging with sequential renumbering
-  - Frequency validation (VHF/UHF amateur bands)
-  - CHIRP metadata filtering
-  - Bulk channel operations (multi-select, delete, duplicate)
+## 🤖 AI-Assisted Hardware Reverse Engineering
 
-- **GUI Tools**:
-  - Interactive channel table viewer with professional styling
-  - Double-click for detailed channel information
-  - Scrollable, sortable interface with column selection
-  - Live editing with undo/redo support
-  - Motorola ASTRO 25-inspired design
+**This entire repository—every line of code, test, and documentation—was written by AI.** 
 
-- **CTCSS/DCS Tone Support**:
-  - ✅ Complete CTCSS mapping (all 50 standard tones validated)
-  - Split tone support (different TX/RX)
-  - TX-only and RX-only configurations
-  - 🚧 DCS code support (planned)
+> *"A human has not typed a single word contained in this repository, well aside from this quote."*
 
-- **Data Quality**:
-  - Strict frequency validation
-  - Corrupted channel detection
-  - Unicode-safe name handling
-  - DMR ID configuration
+This project demonstrates the powerful capability of AI tools for hardware reverse engineering tasks.
 
-## Installation
+### Why AI for Reverse Engineering?
+
+Reverse engineering involves pattern matching, protocol analysis, and systematic testing—tasks where AI excels:
+
+- **Pattern Recognition**: Identifying byte sequences in UART captures
+- **Protocol Decoding**: Mapping command structures and checksums
+- **Test Generation**: Creating comprehensive validation suites
+- **Documentation**: Producing detailed technical reports
+
+While these are relatively straightforward engineering tasks individually, they require significant time and attention to detail. AI dramatically accelerates this process, making hardware reverse engineering accessible and efficient.
+
+### AI Tools Used
+
+- **Claude (Anthropic)** - Primary development via Cline VS Code extension
+- **Cline** - AI coding assistant for iterative development
+- **GitHub Copilot** - AI pair programmer for code completion and suggestions
+- All prompts, debugging, and refinement done through natural language conversation
+
+---
+
+## 📻 What is CodeplugConverter?
+
+CodeplugConverter is a **Customer Programming Software (CPS)** for the Guohetec PMR-171 wideband handheld transceiver. It provides:
+
+### Core CPS Features
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **GUI Editor** | ✅ Complete | Professional channel editor with Motorola ASTRO 25 styling |
+| **UART Programming** | ✅ Complete | Direct read/write to radio without manufacturer software |
+| **CTCSS Tones** | ✅ Complete | All 50 standard tones mapped and validated |
+| **Multi-Mode** | ✅ Complete | NFM, WFM, AM, USB, LSB, CW, DMR support |
+| **CHIRP Import** | ✅ Complete | Import from CHIRP .img files |
+| **CSV Export** | ✅ Complete | Export for spreadsheet analysis |
+| **DCS Tones** | ⏸️ Pending | Awaiting radio firmware support |
+
+### GUI Capabilities
+
+- **Channel Table View**: Sortable, filterable list with column selection
+- **Inline Editing**: Edit channel name, frequency, mode, tones directly
+- **Bulk Operations**: Multi-select, delete, duplicate, move channels
+- **Undo/Redo**: Full edit history with Ctrl+Z/Ctrl+Y
+- **Validation**: Warnings for out-of-band frequencies and invalid settings
+- **DMR Support**: Color code, timeslot, and DMR ID configuration
+
+### Direct Radio Programming
 
 ```bash
-# Clone the repository
+# Read channels from radio
+python -m codeplug_converter view output.json
+# Use Radio menu → Read from Radio
+
+# Write channels to radio  
+# Use Radio menu → Write to Radio
+```
+
+**Connection Parameters** (discovered through reverse engineering):
+- Baud: 115200, 8N1
+- DTR: HIGH (critical!)
+- RTS: HIGH (critical!)
+
+---
+
+## 📊 Validation & Testing
+
+### CTCSS Tone Validation
+
+Comprehensive testing validated the CTCSS implementation:
+
+| Test | Channels | Result | Coverage |
+|------|----------|--------|----------|
+| Tone Mapping | 50 | ✅ Pass | All standard CTCSS tones |
+| Split Tones | 25 | ✅ Pass | Different TX/RX |
+| TX-Only | 5 | ✅ Pass | Tone only on transmit |
+| RX-Only | 5 | ✅ Pass | Tone only on receive |
+| **Total** | **85** | **100%** | Full coverage |
+
+### UART Read/Write Verification
+
+```bash
+python tests/test_uart_read_write_verify.py --port COM3 --channels 5 --yes
+```
+
+**Results**: 5/5 channels passed on validation run
+- All modes tested (NFM, AM, USB, LSB, WFM)
+- Frequency accuracy verified (VHF + UHF)
+- Channel names up to 11 characters
+- Automatic backup and restoration
+
+### Test Suite
+
+```bash
+# Run all tests
+pytest
+
+# Run specific test file
+pytest tests/test_pmr171_format_validation.py -v
+
+# Run UART verification (requires radio connected)
+pytest tests/test_uart_read_write_verify.py -v
+```
+
+**24 automated tests** verify JSON format compatibility with factory software.
+
+---
+
+## 🚀 Quick Start
+
+### Installation
+
+```bash
+git clone https://github.com/aramder/CodeplugConverter.git
 cd CodeplugConverter
 
-# Create virtual environment (recommended)
+# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Install package in development mode
+# Install
 pip install -e .
 ```
 
-## Quick Start
+### Launch GUI
+
+```bash
+python -m codeplug_converter view examples/Mode_Test.json
+```
 
 ### Convert CHIRP Files
 
 ```bash
-# Convert multiple CHIRP .img files
-python -m codeplug_converter convert file1.img file2.img -o output.json
-
-# Or use default files (backwards compatible)
-cd Codeplugs/Guohetec
-python -m codeplug_converter
+python -m codeplug_converter convert radio.img -o output.json
 ```
 
-### View Channel Data
+---
 
-```bash
-# View a JSON file in table format
-python -m codeplug_converter view output.json
-
-# Or use old syntax (backwards compatible)
-python -m codeplug_converter --view output.json
-```
-
-### Python API
-
-```python
-from codeplug_converter import ChirpParser, PMR171Writer
-from pathlib import Path
-
-# Parse CHIRP file
-parser = ChirpParser()
-channels = parser.parse(Path("radio.img"))
-
-# Convert to PMR-171 format
-writer = PMR171Writer(dmr_id=3107683)
-pmr_channels = writer.channels_from_parsed(channels)
-
-# Save to JSON
-writer.write(pmr_channels, Path("output.json"))
-```
-
-## Project Structure
+## 📁 Repository Structure
 
 ```
 CodeplugConverter/
-├── codeplug_converter/          # Main package
-│   ├── __init__.py          # Package exports
-│   ├── __main__.py          # CLI entry point
-│   ├── parsers/             # File format parsers
-│   │   ├── base_parser.py   # Abstract parser interface
-│   │   └── chirp_parser.py  # CHIRP .img parser
-│   ├── writers/             # Output format writers
-│   │   └── pmr171_writer.py # PMR-171 JSON writer
-│   ├── radio/               # Radio communication
-│   │   └── pmr171_uart.py   # PMR-171 UART protocol driver
-│   ├── gui/                 # GUI components
-│   │   └── table_viewer.py  # Channel table viewer
-│   └── utils/               # Utilities
-│       ├── frequency.py     # Frequency conversion
-│       └── validation.py    # Data validation
-├── tests/                   # Test suite
-├── examples/                # Example files
-├── docs/                    # Documentation
-├── setup.py                 # Package setup
-├── requirements.txt         # Dependencies
-└── README.md               # This file
+├── codeplug_converter/           # Main application
+│   ├── gui/                      # GUI components
+│   │   └── table_viewer.py       # Main CPS interface
+│   ├── radio/                    # Radio communication
+│   │   └── pmr171_uart.py        # UART protocol driver
+│   ├── parsers/                  # File format parsers
+│   │   └── chirp_parser.py       # CHIRP .img parser
+│   ├── writers/                  # Output writers
+│   │   └── pmr171_writer.py      # PMR-171 JSON + CTCSS
+│   └── utils/                    # Utilities
+│       ├── frequency.py          # Frequency conversion
+│       └── validation.py         # Data validation
+│
+├── tests/                        # Test suite
+│   ├── test_uart_read_write_verify.py   # Hardware validation
+│   ├── test_pmr171_format_validation.py # Format tests
+│   └── test_configs/             # Test configurations
+│       └── Results/              # UART capture files (.spm)
+│
+├── docs/                         # Documentation
+│   ├── UART_Reverse_Engineering_Report.md  # Full RE report
+│   ├── UART_Testing.md           # UART test documentation
+│   ├── Complete_Ctcss_Mapping.md # CTCSS tone table
+│   ├── Pmr171_Protocol.md        # Protocol specification
+│   └── Factory_Json_Comparison.md # Format validation
+│
+├── examples/                     # Example files
+│   └── Mode_Test.json            # Sample codeplug
+│
+└── TODO.md                       # Development roadmap
 ```
 
-## Configuration
+---
 
-### DMR ID
+## 📖 Documentation
 
-Set your DMR ID in the writer:
+| Document | Description |
+|----------|-------------|
+| [UART Reverse Engineering Report](docs/UART_Reverse_Engineering_Report.md) | Complete protocol discovery documentation |
+| [UART Testing](docs/UART_Testing.md) | Hardware test procedures and results |
+| [CTCSS Mapping](docs/Complete_Ctcss_Mapping.md) | Complete tone → yayin value table |
+| [PMR-171 Protocol](docs/Pmr171_Protocol.md) | Protocol specification and field definitions |
+| [TODO](TODO.md) | Development roadmap and session history |
 
-```python
-writer = PMR171Writer(dmr_id=YOUR_DMR_ID)
+---
+
+## 🔧 Technical Discoveries
+
+### Key Reverse Engineering Findings
+
+1. **DTR/RTS Required**: Radio won't respond without DTR=HIGH and RTS=HIGH
+2. **CTCSS Field Names Misleading**: `rxCtcss`/`txCtcss` are IGNORED; `emitYayin`/`receiveYayin` control tones
+3. **Non-Linear Tone Encoding**: CTCSS tones use proprietary yayin values (1-55 with gaps)
+4. **Dual VFO Architecture**: Each channel has VFO A (RX) and VFO B (TX) frequencies
+5. **Mode 9 = DMR**: Added in firmware update, not in original documentation
+
+### Packet Structure
+
+```
+┌────────┬────────┬────────┬─────────────┬──────────┐
+│ Header │ Length │ Cmd ID │ Payload     │ Checksum │
+│ (2 B)  │ (1 B)  │ (1 B)  │ (Variable)  │ (1 B)    │
+└────────┴────────┴────────┴─────────────┴──────────┘
 ```
 
-Or modify the default in `codeplug_converter/writers/pmr171_writer.py`:
+---
 
-```python
-DMR_ID = 3107683  # Change to your DMR ID
-```
+## 🎯 Project Status
 
-### Mode Mappings
+### Completed ✅
+- [x] GUI channel editor with professional styling
+- [x] Direct UART read/write to radio
+- [x] Complete CTCSS tone mapping (50 tones)
+- [x] CHIRP .img file import
+- [x] CSV export
+- [x] Multi-mode support (NFM, AM, USB, LSB, DMR)
+- [x] 24 automated format validation tests
+- [x] Hardware-in-the-loop testing
 
-The tool supports all PMR-171 modes:
-- 0: USB (Upper Sideband)
-- 1: LSB (Lower Sideband)
-- 2: CWR (CW Reverse)
-- 3: CWL (CW Lower)
-- 4: AM (Amplitude Modulation)
-- 5: WFM (Wide FM)
-- 6: NFM (Narrow FM) - default for FM
-- 7: DIGI (Generic Digital)
-- 8: PKT (Packet)
-- 9: DMR (Digital Mobile Radio)
-
-## Development Roadmap
-
-### Phase 1: CHIRP Support ✅
-- [x] CHIRP .img binary parser
-- [x] PMR-171 JSON output
-- [x] Multi-file consolidation
-- [x] Duplicate detection
-- [x] Table viewer GUI
-- [x] CHIRP metadata filtering
-- [x] Frequency validation
-
-### Phase 2: Additional Formats 🚧
-- [ ] Anytone .rdt parser (D878UV II)
-- [ ] Motorola .ctb/.xctb parser (XPR series)
-- [ ] Motorola .cpg parser (XTS series)
-- [ ] CSV import/export (CHIRP-compatible)
-
-### Phase 3: Enhanced GUI 🚧
-- [ ] File browser/open dialogs
-- [ ] Inline channel editing
-- [ ] Bulk operations (frequency offset, mode change)
-- [ ] Search/filter/sort functionality
-
-### Phase 4: UART Programming 🚧
-- [ ] Serial interface (pyserial)
-- [ ] PMR-171 protocol reverse engineering
-- [ ] Read/write codeplug from radio
-
-### Phase 5: Advanced Features 🚧
+### Remaining
+- [ ] DCS tone support (pending firmware)
+- [ ] Progress indicators for radio operations
+- [ ] Channel zones/groups
 - [ ] Repeater database integration
-- [ ] Cross-format conversion
-- [ ] Channel import from online databases
-- [ ] Backup/restore functionality
 
-### Phase 6: Distribution 🚧
-- [ ] Standalone executable (PyInstaller)
-- [ ] Auto-update system
-- [ ] User documentation
-- [ ] Video tutorials
+---
 
-## Testing
+## 📜 License
 
-```bash
-# Run tests
-pytest
+Polyform Noncommercial License 1.0.0 - see [LICENSE](LICENSE)
 
-# Run specific test
-pytest tests/test_chirp_parser.py
+Free for personal use, research, and education. Commercial use requires separate license.
 
-# With coverage
-pytest --cov=codeplug_converter
-```
+---
 
-## Contributing
+## 👤 Credits
 
-Contributions welcome! Please:
+**Developed by**: Aram Dergevorkian  
+**AI Assistant**: Claude (Anthropic) via Cline  
+**All code written by**: AI (100%)
+
+---
+
+## 🤝 Contributing
+
+Contributions welcome! This project demonstrates AI-assisted development:
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Make your changes
-4. Add tests if applicable
-5. Commit your changes (`git commit -m 'Add amazing feature'`)
-6. Push to the branch (`git push origin feature/amazing-feature`)
-7. Open a Pull Request
+2. Describe the feature/fix you want in natural language
+3. Use AI tools to implement
+4. Submit PR with AI-generated code
 
-## Known Issues
+---
 
-- CHIRP embeds metadata as fake channels at end of file (automatically filtered)
-- Some UV-5R/UV-82 files may contain corrupted channels (automatically filtered)
-- Unicode characters in channel names may not display correctly in Windows terminal
-
-## TODO / Future Features
-
-### GUI Enhancements
-- [ ] **Channel renumbering**: Add +/- buttons to allow users to change channel numbers and automatically re-sort the channel list
-- [ ] **Bulk operations**: Select multiple channels for batch editing (delete, move, copy)
-- [ ] **Undo/Redo**: Implement edit history for reverting changes
-- [ ] **Channel zones/groups**: Organize channels into user-defined groups
-- [ ] **Import/Export presets**: Save and load channel configurations
-
-### Format Support
-- [ ] **Anytone .rdt**: Read/write Anytone codeplug format
-- [ ] **Motorola .ctb/.xctb**: MOTOTRBO CPS format support
-- [ ] **CSV**: Generic CSV import/export with field mapping
-- [ ] **CHIRP CSV**: Direct import from CHIRP CSV exports
-
-### Features
-- [ ] **Frequency calculator**: Repeater offset calculator and tone lookup
-- [ ] **Channel validation**: Warn about out-of-band frequencies, invalid tones
-- [ ] **Auto-programming**: Generate channels from repeater databases
-- [ ] **Backup/restore**: Save previous versions before changes
-
-## License
-
-Polyform Noncommercial License 1.0.0 - see [LICENSE](LICENSE) file for details.
-
-This software is free for personal use, research, education, and other noncommercial purposes. Commercial use requires a separate license.
-
-## Credits
-
-- CHIRP format documentation: https://chirp.danplanet.com/
-- PMR-171 specifications: Reverse engineered
-- Developed by: Aram Dergevorkian
-
-## Support
-
-For issues, questions, or feature requests, please open an issue on GitHub.
+*Last Updated: January 19, 2026*
