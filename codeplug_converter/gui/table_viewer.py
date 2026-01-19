@@ -1,4 +1,4 @@
-"""Professional radio programming GUI for channel data"""
+"""Radio programming GUI for channel data"""
 
 import copy
 import csv
@@ -83,9 +83,10 @@ class ToolTip:
 
 
 class ChannelTableViewer:
-    """Professional radio programming interface with tree navigation and tabbed detail view
+    """Radio programming interface with tree navigation and tabbed detail view
     
-    Branded as "Luminavolt PMR-171 CPS" (Customer Programming Software)
+    PMR-171 CPS (Customer Programming Software)
+    Developed by Aram Dergevorkian (aram@aramd.net)
     """
     
     # Track if current data is unsaved (from fresh read or new file)
@@ -129,8 +130,8 @@ class ChannelTableViewer:
     # Combined CTCSS/DCS list for dropdowns: CTCSS tones, then D###N codes, then D###R codes
     CTCSS_DCS_COMBINED = ['Off'] + CTCSS_TONES + DCS_CODES
     
-    def __init__(self, channels: Dict[str, Dict], title: str = "Luminavolt PMR-171 CPS"):
-        """Initialize professional viewer
+    def __init__(self, channels: Dict[str, Dict], title: str = "PMR-171 CPS"):
+        """Initialize viewer
         
         Args:
             channels: Dictionary of channel data
@@ -176,9 +177,9 @@ class ChannelTableViewer:
         # Default selected columns (shown by default) - tree #0 is R/W checkbox
         self.selected_columns = ['ch', 'name', 'rx_freq', 'mode']
         
-        # Style colors matching professional radio software (using centralized palette)
+        # Style colors (using centralized palette)
         self.colors = {
-            'header_bg': BLUE_PALETTE['header'],    # Professional blue header
+            'header_bg': BLUE_PALETTE['header'],    # Header color
             'header_fg': 'white',
             'selected_bg': BLUE_PALETTE['primary'],  # Primary blue for selection
             'tree_bg': '#F0F0F0'
@@ -342,7 +343,7 @@ class ChannelTableViewer:
         return 0.0
     
     def show(self):
-        """Display the professional radio programming interface"""
+        """Display the radio programming interface"""
         if not self.channels:
             print("No channels to display!")
             return
@@ -362,7 +363,7 @@ class ChannelTableViewer:
                 pass  # Fallback to default geometry if maximizing fails
         
         # Set window icon
-        icon_path = Path(__file__).parent.parent / 'assets' / 'LV_black.png'
+        icon_path = Path(__file__).parent.parent / 'assets' / 'pmr171_cps.png'
         if icon_path.exists():
             try:
                 icon = tk.PhotoImage(file=str(icon_path))
@@ -421,7 +422,7 @@ class ChannelTableViewer:
         self.root.mainloop()
     
     def _create_cps_toolbar(self):
-        """Create CPS-style toolbar with blue buttons (Luminavolt branding)"""
+        """Create CPS-style toolbar with blue buttons"""
         # Toolbar frame with gray background
         toolbar_frame = tk.Frame(self.root, bg='#F0F0F0', height=80)
         toolbar_frame.pack(fill=tk.X, side=tk.TOP)
@@ -431,8 +432,8 @@ class ChannelTableViewer:
         inner_frame = tk.Frame(toolbar_frame, bg='#F0F0F0')
         inner_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=8)
         
-        # Button style - blue background (Luminavolt branding) using centralized palette
-        button_bg = BLUE_PALETTE['primary']  # Professional blue
+        # Button style - blue background using centralized palette
+        button_bg = BLUE_PALETTE['primary']
         button_fg = 'white'
         button_font = ('Arial', 9)
         icon_font = ('Arial', 16)
@@ -4333,7 +4334,7 @@ def view_channel_file(json_path: Path, title: str = None):
         channels = data
     
     if title is None:
-        title = "Luminavolt PMR-171 CPS"
+        title = "PMR-171 CPS"
     
     viewer = ChannelTableViewer(channels, title)
     viewer.current_file = json_path  # Set the file path for the banner display
