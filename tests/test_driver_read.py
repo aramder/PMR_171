@@ -7,7 +7,7 @@ import os
 # Add parent dir to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from codeplug_converter.radio.pmr171_uart import PMR171Radio
+from pmr_171_cps.radio.pmr171_uart import PMR171Radio
 
 
 def main():

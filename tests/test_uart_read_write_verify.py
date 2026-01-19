@@ -30,7 +30,7 @@ Usage:
   # Dry run (read-only, no writes)
   python tests/test_uart_read_write_verify.py --dry-run
 
-Author: CodeplugConverter Project
+Author: PMR-171 CPS Project
 Date: January 2026
 """
 
@@ -47,7 +47,7 @@ import pytest
 # Add parent directory to path for imports
 sys.path.insert(0, str(__file__).rsplit('\\', 2)[0].rsplit('/', 2)[0])
 
-from codeplug_converter.radio.pmr171_uart import (
+from pmr_171_cps.radio.pmr171_uart import (
     PMR171Radio,
     ChannelData,
     Mode,

@@ -1,7 +1,7 @@
 """Tests for utility functions"""
 
 import pytest
-from codeplug_converter.utils import (
+from pmr_171_cps.utils import (
     frequency_to_bytes,
     bytes_to_frequency,
     bcd_to_frequency,

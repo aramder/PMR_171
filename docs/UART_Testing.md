@@ -309,7 +309,7 @@ python -m pytest tests/test_uart_read_write_verify.py::TestUARTReadWriteVerify::
 
 ## Related Files
 
-- `codeplug_converter/radio/pmr171_uart.py` - UART communication implementation
+- `pmr_171_cps/radio/pmr171_uart.py` - UART communication implementation
 - `docs/Pmr171_Protocol.md` - Protocol documentation
 - `TODO.md` - Full specification of test requirements
 

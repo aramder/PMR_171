@@ -1,7 +1,7 @@
 """Tests for PMR-171 writer"""
 
 import pytest
-from codeplug_converter.writers import PMR171Writer
+from pmr_171_cps.writers import PMR171Writer
 
 
 def test_writer_initialization():

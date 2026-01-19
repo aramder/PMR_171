@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path for imports
 sys.path.insert(0, '.')
 
-from codeplug_converter.radio.pmr171_uart import (
+from pmr_171_cps.radio.pmr171_uart import (
     PMR171Radio, 
     list_serial_ports,
     SERIAL_AVAILABLE,

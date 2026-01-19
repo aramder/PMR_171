@@ -6,14 +6,14 @@ readme_file = Path(__file__).parent / "README.md"
 long_description = readme_file.read_text(encoding='utf-8') if readme_file.exists() else ""
 
 setup(
-    name="codeplug-converter",
+    name="pmr-171-cps",
     version="0.1.0",
     author="Aram Dergevorkian",
     author_email="",
-    description="Convert radio configuration files to various formats",
+    description="PMR-171 Channel Programming Software - Convert and manage radio configurations",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/aramder/CodeplugConverter",  # Update with actual URL
+    url="https://github.com/aramder/PMR_171_CPS",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 3 - Alpha",
@@ -42,7 +42,7 @@ setup(
     },
     entry_points={
         "console_scripts": [
-            "codeplug-converter=codeplug_converter.__main__:main",
+            "pmr-171-cps=pmr_171_cps.__main__:main",
         ],
     },
 )

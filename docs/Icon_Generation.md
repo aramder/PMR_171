@@ -14,7 +14,7 @@ The PMR-171 CPS application uses a custom-generated icon that visually represent
 
 ## Icon Files
 
-All icon files are stored in `codeplug_converter/assets/`:
+All icon files are stored in `pmr_171_cps/assets/`:
 
 | File | Size | Description |
 |------|------|-------------|
@@ -47,7 +47,7 @@ pip install Pillow
 python scripts/generate_icon.py
 ```
 
-This will regenerate all icon files in `codeplug_converter/assets/`.
+This will regenerate all icon files in `pmr_171_cps/assets/`.
 
 ### Key Functions
 
@@ -80,7 +80,7 @@ Attempts to load stylish bold fonts in order of preference:
 
 ### Loading the Icon
 
-The icon is loaded in `codeplug_converter/gui/table_viewer.py` in the `show()` method:
+The icon is loaded in `pmr_171_cps/gui/table_viewer.py` in the `show()` method:
 
 ```python
 def show(self):
@@ -99,9 +99,9 @@ def show(self):
 ### How It Works
 
 1. **Path Resolution**: The icon path is resolved relative to the module location:
-   - `Path(__file__).parent` = `codeplug_converter/gui/`
-   - `.parent` = `codeplug_converter/`
-   - `/ 'assets' / 'pmr171_cps.png'` = `codeplug_converter/assets/pmr171_cps.png`
+   - `Path(__file__).parent` = `pmr_171_cps/gui/`
+   - `.parent` = `pmr_171_cps/`
+   - `/ 'assets' / 'pmr171_cps.png'` = `pmr_171_cps/assets/pmr171_cps.png`
 
 2. **Loading**: `tk.PhotoImage` loads the PNG file directly (tkinter supports PNG format)
 
@@ -158,7 +158,7 @@ If you need to modify the icon design:
 
 1. Edit `scripts/generate_icon.py`
 2. Run `python scripts/generate_icon.py`
-3. Test with `python -m codeplug_converter view examples/Mode_Test.json`
+3. Test with `python -m pmr_171_cps view examples/Mode_Test.json`
 4. Verify icon appears in:
    - Window titlebar
    - Windows taskbar
@@ -168,7 +168,7 @@ If you need to modify the icon design:
 
 ### Icon Not Appearing
 
-1. **Check file exists**: Verify `codeplug_converter/assets/pmr171_cps.png` exists
+1. **Check file exists**: Verify `pmr_171_cps/assets/pmr171_cps.png` exists
 2. **Check file size**: Should be ~6KB (not 0 bytes)
 3. **Check permissions**: File should be readable
 

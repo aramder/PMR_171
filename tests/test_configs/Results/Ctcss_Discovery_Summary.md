@@ -58,7 +58,7 @@ Ch  11: CTCSS 156.7          | emit= 27 receive= 27
 
 ### ✅ Completed
 
-1. **Code Updated**: `codeplug_converter/writers/pmr171_writer.py`
+1. **Code Updated**: `pmr_171_cps/writers/pmr171_writer.py`
    - `_tone_to_yayin()` method now includes 6 real mappings
    - Properly documented source and limitations
    - Falls back to 0 (no tone) for unmapped frequencies
@@ -116,7 +116,7 @@ Begin DCS code mapping once CTCSS is complete.
 
 ## Files Modified
 
-1. **`codeplug_converter/writers/pmr171_writer.py`**:
+1. **`pmr_171_cps/writers/pmr171_writer.py`**:
    - Updated `_tone_to_yayin()` with 6 real mappings
    - Changed from placeholder (only 100.0=1) to real data
    - Documented source and limitations

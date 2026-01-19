@@ -25,7 +25,7 @@ This report documents the successful reverse engineering of the Guohetec PMR-171
 
 - **Development Time:** ~40 hours over 2 weeks
 - **Test Channels Validated:** 5/5 (100% success rate)
-- **Code Location:** `codeplug_converter/radio/pmr171_uart.py`
+- **Code Location:** `pmr_171_cps/radio/pmr171_uart.py`
 - **Test Script:** `tests/test_uart_read_write_verify.py`
 
 ---
@@ -491,7 +491,7 @@ The protocol documentation and Python implementation are available in the Codepl
 
 | File | Path |
 |------|------|
-| UART Implementation | `codeplug_converter/radio/pmr171_uart.py` |
+| UART Implementation | `pmr_171_cps/radio/pmr171_uart.py` |
 | Test Script | `tests/test_uart_read_write_verify.py` |
 | Testing Documentation | `docs/Uart_Testing.md` |
 | Capture Files | `tests/test_configs/Results/*.spm` |

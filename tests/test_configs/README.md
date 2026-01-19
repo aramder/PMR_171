@@ -38,7 +38,7 @@ These files were used during the CTCSS mapping discovery process:
 **Current Status**: ✅ 100% COMPLETE (50/50 tones mapped)
 
 All 50 standard CTCSS tones have been mapped to their yayin encoding values through systematic testing (Tests 05-10). The complete mapping is implemented in:
-- `codeplug_converter/writers/pmr171_writer.py`
+- `pmr_171_cps/writers/pmr171_writer.py`
 - Documented in `docs/COMPLETE_CTCSS_MAPPING.md`
 
 ## Test History
@@ -106,7 +106,7 @@ See `docs/COMPLETE_CTCSS_MAPPING.md` for the complete 50-tone table.
 - `docs/Test10CtcssFindings.md` - Test 10 detailed results
 - `docs/CtcssAnalysis.md` - CTCSS field analysis
 - `CtcssMappingsDiscovered.txt` - Quick reference
-- `codeplug_converter/writers/pmr171_writer.py` - Implementation
+- `pmr_171_cps/writers/pmr171_writer.py` - Implementation
 
 ## Notes
 

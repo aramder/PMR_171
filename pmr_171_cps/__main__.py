@@ -1,4 +1,4 @@
-"""Command-line interface for Codeplug Converter"""
+"""Command-line interface for PMR-171 CPS"""
 
 import sys
 import argparse
@@ -199,7 +199,7 @@ def convert_chirp_files(file_paths: list, output: Path, deduplicate: bool = True
 def main():
     """Main CLI entry point"""
     parser = argparse.ArgumentParser(
-        description='Convert radio configuration files to PMR-171 JSON format'
+        description='PMR-171 CPS - Convert radio configuration files to PMR-171 JSON format'
     )
     
     subparsers = parser.add_subparsers(dest='command', help='Command to run')

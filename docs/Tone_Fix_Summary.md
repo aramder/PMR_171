@@ -19,7 +19,7 @@ Through systematic hardware testing, we discovered that **CTCSS/DCS tones were c
 
 ## Changes Made
 
-### 1. Updated `codeplug_converter/writers/pmr171_writer.py`
+### 1. Updated `pmr_171_cps/writers/pmr171_writer.py`
 
 #### Changed Method Signature:
 ```python
@@ -157,7 +157,7 @@ Added new high-priority section at top:
 
 ## Files Modified
 
-1. **`codeplug_converter/writers/pmr171_writer.py`**:
+1. **`pmr_171_cps/writers/pmr171_writer.py`**:
    - Changed create_channel() parameters
    - Updated field assignments for tones
    - Added _tone_to_yayin() method
@@ -197,7 +197,7 @@ Added new high-priority section at top:
   - `docs/CTCSS_ANALYSIS.md` - Original analysis (now obsolete)
 
 - **Code**:
-  - `codeplug_converter/writers/pmr171_writer.py` - Updated writer
+  - `pmr_171_cps/writers/pmr171_writer.py` - Updated writer
 
 ## Conclusion
 

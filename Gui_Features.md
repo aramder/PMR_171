@@ -1,7 +1,7 @@
 # Professional Radio Programming GUI
 
 ## Overview
-The CodeplugConverter now features a professional radio programming interface modeled after industry-standard software like MOTORTRBO CPS and ASTRO 25 Mobile Depot.
+PMR-171 CPS now features a professional radio programming interface modeled after industry-standard software like MOTORTRBO CPS and ASTRO 25 Mobile Depot.
 
 ## Interface Layout
 
@@ -152,7 +152,7 @@ The tree panel includes a filter bar with the following options:
 ### Viewing Channels
 1. Launch the GUI with a converted JSON file:
    ```bash
-   python -m codeplug_converter view channels.json
+   python -m pmr_171_cps view channels.json
    ```
 
 2. **Navigate**: Click on a channel in the tree to view details

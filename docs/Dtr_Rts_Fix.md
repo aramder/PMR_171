@@ -58,7 +58,7 @@ Created `tests/test_quick.py` with shorter timeouts to quickly test combinations
 
 ## The Fix
 
-Modified `codeplug_converter/radio/pmr171_uart.py` in the `connect()` method:
+Modified `pmr_171_cps/radio/pmr171_uart.py` in the `connect()` method:
 
 ```python
 def connect(self) -> None:

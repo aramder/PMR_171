@@ -225,7 +225,7 @@ These are likely:
 ✅ **COMPLETE AND VALIDATED** (January 18, 2026)
 
 1. ✅ Complete CTCSS mapping table (50/50 tones)
-2. ✅ Implemented in `codeplug_converter/writers/pmr171_writer.py`
+2. ✅ Implemented in `pmr_171_cps/writers/pmr171_writer.py`
 3. ✅ Validated via Test 11 (25 test channels, 100% accuracy)
 4. ✅ Split tones, TX-only, RX-only all confirmed working
 5. ✅ Documentation complete in `docs/COMPLETE_CTCSS_MAPPING.md`

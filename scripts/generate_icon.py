@@ -510,7 +510,7 @@ def create_radio_only_icon(size: int = 64) -> Image.Image:
 
 def main():
     """Generate icon files at various sizes"""
-    output_dir = Path(__file__).parent.parent / 'codeplug_converter' / 'assets'
+    output_dir = Path(__file__).parent.parent / 'pmr_171_cps' / 'assets'
     output_dir.mkdir(parents=True, exist_ok=True)
     
     # Main application icon (with PMR 171 text)

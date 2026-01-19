@@ -214,7 +214,7 @@ After testing, document results:
 2. If all tests pass:
    - Mark CTCSS implementation as VALIDATED
    - Update `docs/COMPLETE_CTCSS_MAPPING.md` with validation status
-   - Update `codeplug_converter/writers/pmr171_writer.py` comments
+   - Update `pmr_171_cps/writers/pmr171_writer.py` comments
 
 3. If issues found:
    - Document specific problems
@@ -226,7 +226,7 @@ After testing, document results:
 - **Test file**: `tests/test_configs/11_complete_ctcss_validation.json`
 - **Generator**: `tests/test_configs/11_complete_ctcss_validation.py`
 - **Mapping ref**: `docs/COMPLETE_CTCSS_MAPPING.md`
-- **Code impl**: `codeplug_converter/writers/pmr171_writer.py`
+- **Code impl**: `pmr_171_cps/writers/pmr171_writer.py`
 
 ## Notes
 

@@ -1,7 +1,7 @@
-"""Codeplug Configuration Converter
+"""PMR-171 Channel Programming Software
 
 Converts various radio configuration formats to Guohetec PMR-171 JSON format
-and other formats.
+and manages radio programming via UART.
 """
 
 __version__ = "0.1.0"

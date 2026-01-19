@@ -234,7 +234,7 @@ def create_channel(..., is_digital=False):
     }
 ```
 
-**Location**: `codeplug_converter.py` line ~150 and `codeplug_converter/writers/pmr171_writer.py`
+**Location**: `pmr_171_cps/writers/pmr171_writer.py`
 
 **Priority**: Medium (only affects DMR channels)
 

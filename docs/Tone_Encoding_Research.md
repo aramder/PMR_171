@@ -134,7 +134,7 @@ To complete the tone mapping research, create test files like:
 Configure each in manufacturer software, upload to radio, download back, and record the actual values used.
 
 ## Related Files
-- `codeplug_converter/writers/pmr171_writer.py` - Updated implementation
+- `pmr_171_cps/writers/pmr171_writer.py` - Updated implementation
 - `docs/CTCSS_ANALYSIS.md` - Original CTCSS field analysis
 - `docs/CTCSS_FORMAT_TESTING.md` - Test 07 documentation
 - `docs/UNTESTED_FIELDS_ANALYSIS.md` - Test 08 documentation

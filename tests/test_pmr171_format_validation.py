@@ -3,8 +3,8 @@
 import pytest
 import json
 from pathlib import Path
-from codeplug_converter.writers import PMR171Writer
-from codeplug_converter.utils.frequency import frequency_to_bytes, bytes_to_frequency
+from pmr_171_cps.writers import PMR171Writer
+from pmr_171_cps.utils.frequency import frequency_to_bytes, bytes_to_frequency
 
 
 class TestPMR171FormatValidation:

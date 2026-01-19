@@ -21,7 +21,7 @@
 ### 3. All Documentation Updated ✅
 - **`docs/COMPLETE_CTCSS_MAPPING.md`**: Marked as VALIDATED
 - **`docs/CTCSS_ANALYSIS.md`**: Updated status from "pending" to "complete and validated"
-- **`codeplug_converter/writers/pmr171_writer.py`**: Added validation status in comments
+- **`pmr_171_cps/writers/pmr171_writer.py`**: Added validation status in comments
 - **`TODO.md`**: 
   - Moved CTCSS from "High Priority/Broken" to "Complete and Validated"
   - Added to "Completed Items" section
@@ -157,7 +157,7 @@ Location: `D:/Radio/Guohetec/Testing/`
 ### Updated
 - `docs/COMPLETE_CTCSS_MAPPING.md` - Added VALIDATED status
 - `docs/CTCSS_ANALYSIS.md` - Updated to reflect completion
-- `codeplug_converter/writers/pmr171_writer.py` - Added validation comments
+- `pmr_171_cps/writers/pmr171_writer.py` - Added validation comments
 - `TODO.md` - Moved CTCSS to completed, added session history
 - `README.md` - Added CTCSS features to feature list
 
@@ -175,8 +175,8 @@ Location: `D:/Radio/Guohetec/Testing/`
 - **Usage Guide**: `docs/USAGE.md`
 
 ### Key Code Files
-- **CTCSS Implementation**: `codeplug_converter/writers/pmr171_writer.py`
-- **GUI**: `codeplug_converter/gui/table_viewer.py`
+- **CTCSS Implementation**: `pmr_171_cps/writers/pmr171_writer.py`
+- **GUI**: `pmr_171_cps/gui/table_viewer.py`
 - **Tests**: `tests/test_pmr171_writer.py`
 
 ### Test Data Location

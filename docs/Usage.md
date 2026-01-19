@@ -5,7 +5,7 @@
 ### From Source
 
 ```bash
-cd CodeplugConverter
+cd PMR_171_CPS
 pip install -e .
 ```
 
@@ -14,7 +14,7 @@ This installs the package in "editable" mode, meaning changes to the source code
 ### Development Installation
 
 ```bash
-cd CodeplugConverter
+cd PMR_171_CPS
 pip install -e ".[dev]"
 ```
 
@@ -27,7 +27,7 @@ This includes development dependencies like pytest.
 The simplest way to convert CHIRP .img files:
 
 ```bash
-python -m codeplug_converter convert file1.img file2.img -o output.json
+python -m pmr_171_cps convert file1.img file2.img -o output.json
 ```
 
 Options:
@@ -39,7 +39,7 @@ Options:
 View a PMR-171 JSON file in a table:
 
 ```bash
-python -m codeplug_converter view output.json
+python -m pmr_171_cps view output.json
 ```
 
 This opens an interactive GUI window with:
@@ -53,11 +53,11 @@ Old command syntax still works:
 
 ```bash
 # View command (old style)
-python -m codeplug_converter --view output.json
+python -m pmr_171_cps --view output.json
 
 # Default conversion (old style)
 cd Codeplugs/Guohetec
-python -m codeplug_converter
+python -m pmr_171_cps
 ```
 
 ## Python API Usage
@@ -65,7 +65,7 @@ python -m codeplug_converter
 ### Basic Conversion
 
 ```python
-from codeplug_converter import ChirpParser, PMR171Writer
+from pmr_171_cps import ChirpParser, PMR171Writer
 from pathlib import Path
 
 # Parse CHIRP file
@@ -83,7 +83,7 @@ writer.write(pmr_channels, Path("output.json"))
 ### Advanced: Manual Channel Creation
 
 ```python
-from codeplug_converter import PMR171Writer
+from pmr_171_cps import PMR171Writer
 
 writer = PMR171Writer(dmr_id=3107683)
 
@@ -117,7 +117,7 @@ writer.write(channels, Path("custom.json"))
 ### Using the GUI Programmatically
 
 ```python
-from codeplug_converter import view_channel_file
+from pmr_171_cps import view_channel_file
 from pathlib import Path
 
 # Open channel viewer
@@ -127,7 +127,7 @@ view_channel_file(Path("output.json"), title="My Channels")
 ### Frequency Utilities
 
 ```python
-from codeplug_converter import frequency_to_bytes, bytes_to_frequency
+from pmr_171_cps import frequency_to_bytes, bytes_to_frequency
 
 # Convert frequency to PMR-171 format
 freq_bytes = frequency_to_bytes(146.52)  # Returns (8, 184, 81, 64)
@@ -139,7 +139,7 @@ freq_mhz = bytes_to_frequency(freq_bytes)  # Returns 146.52
 ### Validation Utilities
 
 ```python
-from codeplug_converter.utils import is_valid_frequency
+from pmr_171_cps.utils import is_valid_frequency
 
 # Check if frequency is valid
 if is_valid_frequency(146.52, strict=True):
@@ -195,7 +195,7 @@ Binary format, 32 bytes per channel:
 
 ```python
 from pathlib import Path
-from codeplug_converter.__main__ import convert_chirp_files
+from pmr_171_cps.__main__ import convert_chirp_files
 
 files = [
     Path("radio1.img"),
@@ -211,7 +211,7 @@ convert_chirp_files(files, Path("merged.json"), deduplicate=True)
 ```python
 import json
 from pathlib import Path
-from codeplug_converter.utils import bytes_to_frequency
+from pmr_171_cps.utils import bytes_to_frequency
 
 # Load channels
 with open("output.json") as f:

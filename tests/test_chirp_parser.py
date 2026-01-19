@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from codeplug_converter.parsers import ChirpParser
+from pmr_171_cps.parsers import ChirpParser
 
 
 def test_chirp_parser_initialization():

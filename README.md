@@ -1,4 +1,4 @@
-# PMR-171 CodeplugConverter
+# PMR-171 CPS (Channel Programming Software)
 
 **An AI-Developed Programming Software for the Guohetec PMR-171 Handheld Radio**
 
@@ -27,18 +27,11 @@ Reverse engineering involves pattern matching, protocol analysis, and systematic
 
 While these are relatively straightforward engineering tasks individually, they require significant time and attention to detail. AI dramatically accelerates this process, making hardware reverse engineering accessible and efficient.
 
-### AI Tools Used
-
-- **Claude (Anthropic)** - Primary development via Cline VS Code extension
-- **Cline** - AI coding assistant for iterative development
-- **GitHub Copilot** - AI pair programmer for code completion and suggestions
-- All prompts, debugging, and refinement done through natural language conversation
-
 ---
 
-## 📻 What is CodeplugConverter?
+## 📻 What is PMR-171 CPS?
 
-CodeplugConverter is a **Customer Programming Software (CPS)** for the Guohetec PMR-171 wideband handheld transceiver. It provides:
+PMR-171 CPS is a **Channel Programming Software** for the Guohetec PMR-171 wideband handheld transceiver. It provides:
 
 ### Core CPS Features
 
@@ -65,7 +58,7 @@ CodeplugConverter is a **Customer Programming Software (CPS)** for the Guohetec 
 
 ```bash
 # Read channels from radio
-python -m codeplug_converter view output.json
+python -m pmr_171_cps view output.json
 # Use Radio menu → Read from Radio
 
 # Write channels to radio  
@@ -127,8 +120,8 @@ pytest tests/test_uart_read_write_verify.py -v
 ### Installation
 
 ```bash
-git clone https://github.com/aramder/CodeplugConverter.git
-cd CodeplugConverter
+git clone https://github.com/aramder/pmr-171.git
+cd pmr-171
 
 # Create virtual environment
 python -m venv .venv
@@ -141,13 +134,13 @@ pip install -e .
 ### Launch GUI
 
 ```bash
-python -m codeplug_converter view examples/Mode_Test.json
+python -m pmr_171_cps view examples/Mode_Test.json
 ```
 
 ### Convert CHIRP Files
 
 ```bash
-python -m codeplug_converter convert radio.img -o output.json
+python -m pmr_171_cps convert radio.img -o output.json
 ```
 
 ---
@@ -155,8 +148,8 @@ python -m codeplug_converter convert radio.img -o output.json
 ## 📁 Repository Structure
 
 ```
-CodeplugConverter/
-├── codeplug_converter/           # Main application
+PMR_171_CPS/
+├── pmr_171_cps/                  # Main application
 │   ├── gui/                      # GUI components
 │   │   └── table_viewer.py       # Main CPS interface
 │   ├── radio/                    # Radio communication
@@ -254,7 +247,6 @@ Free for personal use, research, and education. Commercial use requires separate
 ## 👤 Credits
 
 **Developed by**: Aram Dergevorkian  
-**AI Assistant**: Claude (Anthropic) via Cline  
 **All code written by**: AI (100%)
 
 ---

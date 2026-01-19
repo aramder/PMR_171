@@ -210,8 +210,8 @@ ________________________________________________
 ## Next Steps After Testing
 
 1. Update `docs/CTCSS_ANALYSIS.md` with confirmed format
-2. Implement correct encoding in `codeplug_converter/parsers/chirp_parser.py`
-3. Implement correct encoding in `codeplug_converter/writers/pmr171_writer.py`
+2. Implement correct encoding in `pmr_171_cps/parsers/chirp_parser.py`
+3. Implement correct encoding in `pmr_171_cps/writers/pmr171_writer.py`
 4. Update all test configuration files to use correct format
 5. Test converter with real CHIRP files containing CTCSS tones
 6. Document DCS (Digital Coded Squelch) if radio supports it

@@ -145,10 +145,10 @@ The CodeplugConverter's PMR-171 writer now has complete, verified support for al
 - **Verification Script**: `D:/Radio/Guohetec/Testing/11_VERIFICATION_RESULTS.py`
 - **Instructions**: `tests/test_configs/11_VALIDATION_INSTRUCTIONS.md`
 - **Mapping Reference**: `docs/COMPLETE_CTCSS_MAPPING.md`
-- **Implementation**: `codeplug_converter/writers/pmr171_writer.py`
+- **Implementation**: `pmr_171_cps/writers/pmr171_writer.py`
 
 ## Documentation Updates Needed
 
 1. Mark CTCSS implementation as **VALIDATED** in `docs/COMPLETE_CTCSS_MAPPING.md`
-2. Update `codeplug_converter/writers/pmr171_writer.py` comments
+2. Update `pmr_171_cps/writers/pmr171_writer.py` comments
 3. Add validation status to README or user documentation

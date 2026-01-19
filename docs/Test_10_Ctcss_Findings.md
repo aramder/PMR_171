@@ -195,7 +195,7 @@ Now that CTCSS is complete, begin systematic testing of DCS codes (104+ codes re
 2. **docs/TEST_10_CTCSS_FINDINGS.md** - NEW (this file)
    - Complete analysis and documentation of Test 10 results
 
-3. **TO BE UPDATED: codeplug_converter/writers/pmr171_writer.py**
+3. **TO BE UPDATED: pmr_171_cps/writers/pmr171_writer.py**
    - Needs complete 50-tone CTCSS_TO_YAYIN lookup table
 
 ## Conclusion

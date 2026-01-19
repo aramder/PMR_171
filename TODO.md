@@ -1,6 +1,6 @@
-# CodeplugConverter TODO List
+# PMR-171 CPS TODO List
 
-This document tracks planned features, enhancements, and known issues for the CodeplugConverter project.
+This document tracks planned features, enhancements, and known issues for the PMR-171 CPS project.
 
 ---
 
@@ -13,7 +13,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 - [x] **Complete CTCSS mapping table**: ✅ ALL 50 standard tones mapped (Tests 05-10, Jan 2026)
   - All CTCSS tones from 67.0 Hz to 254.1 Hz successfully mapped
   - Non-linear yayin encoding discovered (values 1-55 with gaps)
-  - Complete lookup tables in `codeplug_converter/writers/pmr171_writer.py`
+  - Complete lookup tables in `pmr_171_cps/writers/pmr171_writer.py`
 - [x] **Validation**: ✅ Test 11 confirmed 100% accuracy (Jan 18, 2026)
   - 25 test channels verified (common, edge, split, TX-only, RX-only, no-tone)
   - All emitYayin and receiveYayin values match perfectly
@@ -44,7 +44,7 @@ This document tracks planned features, enhancements, and known issues for the Co
   - [x] Default field values confirmed: txCc=2, all others 0 (matches factory)
 - [ ] **Minor enhancement identified**: Update callFormat=2 for digital channels (currently always 0)
   - Impact: Low priority (only affects DMR channels, may work anyway)
-  - Files to update: codeplug_converter/writers/pmr171_writer.py
+  - Files to update: pmr_171_cps/writers/pmr171_writer.py
   - See docs/Factory_Json_Comparison.md for details
 
 ### Core Functionality
@@ -121,7 +121,7 @@ This document tracks planned features, enhancements, and known issues for the Co
   - [x] Added "Program Radio" menu option with COM port selection
   - [x] Included read/backup functionality to pull existing config from radio
   - [x] Error handling and validation before writing to radio
-  - **Location**: `codeplug_converter/radio/pmr171_uart.py`
+  - **Location**: `pmr_171_cps/radio/pmr171_uart.py`
   - **GUI Integration**: Radio menu with Read/Write to Radio options
   - **Test Script**: `tests/test_uart_read_write_verify.py`
 
@@ -187,7 +187,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 - [x] **Bulk channel operations**: Select multiple channels for batch editing, deletion, or copying (Jan 2026)
 
 ### Format Support
-*No additional format support planned - CodeplugConverter focuses exclusively on PMR-171*
+*No additional format support planned - PMR-171 CPS focuses exclusively on PMR-171*
 
 
 ---
@@ -519,7 +519,7 @@ This allows:
 - **Documentation Updated**:
   - `docs/Pmr171_Protocol.md` - Added Mode 9 (DMR) and DMR channel configuration section
   - `Gui_Features.md` - Added filter options documentation
-  - `codeplug_converter/utils/validation.py` - Added Mode 9 to valid modes
+  - `pmr_171_cps/utils/validation.py` - Added Mode 9 to valid modes
 
 ### January 18, 2026 (Test 11 Validation Session)
 - **Focus**: CTCSS mapping validation and test result verification
