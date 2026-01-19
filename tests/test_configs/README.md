@@ -21,7 +21,7 @@ This directory contains test configuration files for validating PMR-171 codeplug
 - No tone baseline
 - Coverage of all yayin offset ranges
 
-**Instructions**: See `11_VALIDATION_INSTRUCTIONS.md`
+**Instructions**: See `11_ValidationInstructions.md`
 
 **Generator**: `11_complete_ctcss_validation.py`
 
@@ -102,10 +102,10 @@ See `docs/COMPLETE_CTCSS_MAPPING.md` for the complete 50-tone table.
 
 ## Related Documentation
 
-- `docs/COMPLETE_CTCSS_MAPPING.md` - Complete CTCSS reference
-- `docs/TEST_10_CTCSS_FINDINGS.md` - Test 10 detailed results
-- `docs/CTCSS_ANALYSIS.md` - CTCSS field analysis
-- `CTCSS_MAPPINGS_DISCOVERED.txt` - Quick reference
+- `docs/CompleteCtcssMapping.md` - Complete CTCSS reference
+- `docs/Test10CtcssFindings.md` - Test 10 detailed results
+- `docs/CtcssAnalysis.md` - CTCSS field analysis
+- `CtcssMappingsDiscovered.txt` - Quick reference
 - `codeplug_converter/writers/pmr171_writer.py` - Implementation
 
 ## Notes

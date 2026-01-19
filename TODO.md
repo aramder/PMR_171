@@ -19,7 +19,7 @@ This document tracks planned features, enhancements, and known issues for the Co
   - All emitYayin and receiveYayin values match perfectly
   - Split tones, TX-only, RX-only all confirmed functional
 - **Status**: ✅ **VALIDATED AND PRODUCTION READY**
-- **Documentation**: See `docs/COMPLETE_CTCSS_MAPPING.md` and `D:/Radio/Guohetec/Testing/11_VALIDATION_RESULTS.md`
+- **Documentation**: See `docs/Complete_Ctcss_Mapping.md` and `D:/Radio/Guohetec/Testing/11_Validation_Results.md`
 
 ### DCS (Digital Coded Squelch) Encoding - PENDING
 - [ ] **Build DCS mapping table**: Research required - 104+ codes to map (Est: 6-8 hours)
@@ -32,7 +32,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 
 ### JSON Format Validation & Factory Software Compatibility
 - [x] **Comprehensive test suite**: 24 tests validating PMR-171 JSON format compatibility (Jan 2026)
-- [x] **Cross-validate with factory software output**: ✅ VALIDATED - See docs/FACTORY_JSON_COMPARISON.md (Jan 2026)
+- [x] **Cross-validate with factory software output**: ✅ VALIDATED - See docs/Factory_Json_Comparison.md (Jan 2026)
   - [x] Verified field value ranges match factory software - Perfect match!
   - [x] Frequency encoding validated - Mathematically correct big-endian Hz
   - [x] Field structure confirmed - All 40+ fields match factory format
@@ -45,7 +45,7 @@ This document tracks planned features, enhancements, and known issues for the Co
 - [ ] **Minor enhancement identified**: Update callFormat=2 for digital channels (currently always 0)
   - Impact: Low priority (only affects DMR channels, may work anyway)
   - Files to update: codeplug_converter/writers/pmr171_writer.py
-  - See docs/FACTORY_JSON_COMPARISON.md for details
+  - See docs/Factory_Json_Comparison.md for details
 
 ### Core Functionality
 - [x] **Dual frequency architecture**: PMR-171 requires TWO frequencies per memory channel (VFO A and VFO B), but CHIRP only provides one. **Solution**: When importing from single-frequency sources (CHIRP), program the same frequency into both VFO A and VFO B (simplex operation). No intermediate format needed. (Jan 2026)
@@ -456,20 +456,20 @@ This allows:
   - Updated all documentation with DMR mode findings
 - **Key Findings**:
   - Mode 9 = DMR was added in firmware update (not in original FCC v1.5 documentation)
-  - SAMPLE_CHANNELS.json contains 8 DMR channels using mode 9
+  - Sample_Channels.json contains 8 DMR channels using mode 9
   - DMR channels have additional fields: chType, callId, ownId, rxCc, txCc, slot
 - **Documentation Updated**:
-  - `docs/PMR171_PROTOCOL.md` - Added Mode 9 (DMR) and DMR channel configuration section
-  - `GUI_FEATURES.md` - Added filter options documentation
+  - `docs/Pmr171_Protocol.md` - Added Mode 9 (DMR) and DMR channel configuration section
+  - `Gui_Features.md` - Added filter options documentation
   - `codeplug_converter/utils/validation.py` - Added Mode 9 to valid modes
 
 ### January 18, 2026 (Test 11 Validation Session)
 - **Focus**: CTCSS mapping validation and test result verification
 - **Accomplishments**:
   - Verified Test 11 CTCSS validation results from radio readback
-  - Created automated verification script (`11_VERIFICATION_RESULTS.py`)
+  - Created automated verification script (`11_Verification_Results.py`)
   - Confirmed 100% accuracy on all 25 test channels
-  - Documented complete validation results (`11_VALIDATION_RESULTS.md`)
+  - Documented complete validation results (`11_Validation_Results.md`)
   - Updated all documentation to reflect VALIDATED status
 - **Key Findings**:
   - All emitYayin and receiveYayin values match perfectly (25/25 channels)
@@ -486,7 +486,7 @@ This allows:
 - **Focus**: JSON format validation and UART programming planning
 - **Accomplishments**:
   - Created comprehensive test suite: `tests/test_pmr171_format_validation.py` with 24 passing tests
-  - Validated JSON format compatibility with factory software (MODE_TEST.json)
+  - Validated JSON format compatibility with factory software (Mode_Test.json)
   - All tests confirm correct encoding: frequencies, modes, channel structure, field types
   - Reviewed actual factory software output from D:\Radio\Guohetec\PMR-171_20260116.json
   - Created detailed 5-phase UART programming implementation plan

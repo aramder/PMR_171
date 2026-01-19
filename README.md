@@ -103,6 +103,8 @@ CodeplugConverter/
 │   │   └── chirp_parser.py  # CHIRP .img parser
 │   ├── writers/             # Output format writers
 │   │   └── pmr171_writer.py # PMR-171 JSON writer
+│   ├── radio/               # Radio communication
+│   │   └── pmr171_uart.py   # PMR-171 UART protocol driver
 │   ├── gui/                 # GUI components
 │   │   └── table_viewer.py  # Channel table viewer
 │   └── utils/               # Utilities
@@ -240,7 +242,9 @@ Contributions welcome! Please:
 
 ## License
 
-MIT License - see LICENSE file for details
+Polyform Noncommercial License 1.0.0 - see [LICENSE](LICENSE) file for details.
+
+This software is free for personal use, research, education, and other noncommercial purposes. Commercial use requires a separate license.
 
 ## Credits
 

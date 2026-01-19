@@ -275,6 +275,6 @@ Windows terminal may not display Unicode correctly. The tool uses ASCII-safe fal
 
 ## Next Steps
 
-- Read [CHIRP_FORMAT_ANALYSIS.md](../docs/CHIRP_FORMAT_ANALYSIS.md) for technical details
+- Read [ChirpFormatAnalysis.md](ChirpFormatAnalysis.md) for technical details
 - See [examples/](../examples/) for sample files
 - Check [README.md](../README.md) for roadmap and features

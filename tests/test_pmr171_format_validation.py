@@ -17,12 +17,12 @@ class TestPMR171FormatValidation:
     
     @pytest.fixture
     def example_json_path(self):
-        """Path to the example MODE_TEST.json file"""
-        return Path("examples/MODE_TEST.json")
+        """Path to the example Mode_Test.json file"""
+        return Path("examples/Mode_Test.json")
     
     @pytest.fixture
     def example_data(self, example_json_path):
-        """Load the example MODE_TEST.json for reference"""
+        """Load the example Mode_Test.json for reference"""
         if example_json_path.exists():
             with open(example_json_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
@@ -30,7 +30,7 @@ class TestPMR171FormatValidation:
 
     def test_json_structure_has_required_top_level_keys(self, example_data):
         """Verify JSON has radio_profile, radio_metadata, and channels keys"""
-        assert example_data is not None, "MODE_TEST.json not found"
+        assert example_data is not None, "Mode_Test.json not found"
         assert "radio_profile" in example_data
         assert "radio_metadata" in example_data
         assert "channels" in example_data
@@ -367,7 +367,7 @@ class TestPMR171FormatValidation:
     def test_compatibility_with_example_file(self, example_data, writer):
         """Verify our output matches structure of MODE_TEST.json"""
         if example_data is None:
-            pytest.skip("MODE_TEST.json not found")
+            pytest.skip("Mode_Test.json not found")
         
         # Get a reference channel from example file
         example_channel = example_data['channels']['0']
@@ -460,23 +460,23 @@ class TestFrequencyValidation:
         assert abs(freq_mhz - 144.580) < 0.000001
 
     def test_example_file_frequencies(self):
-        """Verify we can decode frequencies from MODE_TEST.json"""
-        # Channel 0-10, 20: 146.52 MHz (from MODE_TEST.json: 8, 187, 183, 192)
+        """Verify we can decode frequencies from Mode_Test.json"""
+        # Channel 0-10, 20: 146.52 MHz (from Mode_Test.json: 8, 187, 183, 192)
         freq_bytes = (8, 187, 183, 192)
         freq = bytes_to_frequency(freq_bytes)
         assert abs(freq - 146.52) < 0.000001
         
-        # Channel 21: 446.00 MHz (from MODE_TEST.json: 26, 149, 107, 128)
+        # Channel 21: 446.00 MHz (from Mode_Test.json: 26, 149, 107, 128)
         freq_bytes = (26, 149, 107, 128)
         freq = bytes_to_frequency(freq_bytes)
         assert abs(freq - 446.00) < 0.000001
         
-        # Channel 22 RX: 146.94 MHz (from MODE_TEST.json: 8, 194, 32, 96)
+        # Channel 22 RX: 146.94 MHz (from Mode_Test.json: 8, 194, 32, 96)
         freq_bytes = (8, 194, 32, 96)
         freq = bytes_to_frequency(freq_bytes)
         assert abs(freq - 146.94) < 0.000001
         
-        # Channel 22 TX: 146.34 MHz (from MODE_TEST.json: 8, 184, 248, 160)
+        # Channel 22 TX: 146.34 MHz (from Mode_Test.json: 8, 184, 248, 160)
         freq_bytes = (8, 184, 248, 160)
         freq = bytes_to_frequency(freq_bytes)
         assert abs(freq - 146.34) < 0.000001
