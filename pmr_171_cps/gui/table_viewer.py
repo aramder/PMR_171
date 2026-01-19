@@ -343,10 +343,10 @@ class ChannelTableViewer:
         return 0.0
     
     def show(self):
-        """Display the radio programming interface"""
-        if not self.channels:
-            print("No channels to display!")
-            return
+        """Display the radio programming interface
+        
+        Can be launched with empty channels - user can open files or read from radio.
+        """
         
         # Create main window
         self.root = tk.Tk()
@@ -1020,6 +1020,8 @@ class ChannelTableViewer:
             on_ok()
         
         port_listbox.bind('<Double-Button-1>', on_double_click)
+        port_listbox.bind('<Return>', lambda e: on_ok())
+        dialog.bind('<Return>', lambda e: on_ok())
         
         ttk.Button(button_frame, text="Connect", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
         ttk.Button(button_frame, text="Cancel", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
