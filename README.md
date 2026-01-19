@@ -120,8 +120,8 @@ pytest tests/test_uart_read_write_verify.py -v
 ### Installation
 
 ```bash
-git clone https://github.com/aramder/pmr-171.git
-cd pmr-171
+git clone https://github.com/aramder/PMR_171.git
+cd PMR_171
 
 # Create virtual environment
 python -m venv .venv
