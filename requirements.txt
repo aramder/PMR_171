@@ -1,7 +1,6 @@
-# No dependencies required for basic functionality
-# All uses Python standard library only
+# Core dependencies
+pyserial>=3.5  # For UART radio programming
 
-# Optional dependencies for future features:
-# pyserial>=3.5  # For UART programming (Phase 4)
+# Optional dependencies for development:
 # pytest>=7.0    # For testing
 # pytest-cov>=4.0  # For coverage reports

@@ -211,8 +211,21 @@ Packet structure (34 bytes total):
 | 20-31  | 12   | Channel Name | Null-terminated ASCII string (max 11 chars + null) |
 | 32-33  | 2    | CRC | CRC-16-CCITT (polynomial 0x1021, init 0xFFFF) |
 
-### Command 0x43 - Channel Read
-Read channel configuration from radio memory. Same structure as write command but used for reading back data.
+### Command 0x41 - Channel Read
+Read channel configuration from radio memory.
+
+**Request Format:**
+```
+| A5 A5 A5 A5 | 05 | 41 | CH_H CH_L | CRC_H CRC_L |
+```
+- Just send 2-byte channel index (big-endian)
+- Radio responds with full 26-byte channel data
+
+**Response Format:**
+Same as write command (0x40) - 26-byte channel data with all fields populated.
+
+**Note:** 0x43 was previously incorrectly documented as the read command. It is actually
+a write acknowledgment/echo. The correct read command is 0x41.
 
 ### Example Channel Write Packet
 ```

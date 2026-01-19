@@ -3,6 +3,7 @@
 import copy
 import csv
 import json
+import logging
 import struct
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
@@ -10,11 +11,26 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
+# Set up debug logging
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 from ..utils.validation import (
     validate_channel, get_frequency_band_name, 
     truncate_channel_name, format_channel_name_for_storage,
     PMR171_MAX_CHANNEL_NAME_LENGTH
 )
+
+# Try to import UART radio interface
+try:
+    from ..radio.pmr171_uart import (
+        PMR171Radio, PMR171Error, list_serial_ports,
+        ChannelData, codeplug_to_channels, channels_to_codeplug,
+        SERIAL_AVAILABLE
+    )
+except ImportError:
+    SERIAL_AVAILABLE = False
+    PMR171Radio = None
 
 
 # Cohesive blue color palette for the GUI (MOTOTRBO CPS style)
@@ -138,8 +154,14 @@ class ChannelTableViewer:
         self.group_by_mode = None  # Group channels by modulation mode (NFM, AM, DMR, etc.)
         self.search_var = None  # Search filter text
         
+        # Channel selection for read/write operations
+        self.channel_checkboxes: Dict[str, tk.BooleanVar] = {}  # ch_id -> BooleanVar
+        self.cancel_operation = False  # Flag for cancelling read/write
+        
         # Available columns for tree view (ordered as desired)
+        # Note: Tree column (#0) is used for R/W checkbox, 'ch' column shows channel number
         self.available_columns = {
+            'ch': {'label': 'Ch', 'width': 50, 'extract': lambda ch: str(ch.get('channelLow', ''))},  # Channel number
             'name': {'label': 'Name', 'width': 120, 'extract': lambda ch: ch.get('channelName', '').rstrip('\u0000').strip() or "(empty)"},
             'rx_freq': {'label': 'RX Freq', 'width': 90, 'extract': lambda ch: self.freq_from_bytes(ch['vfoaFrequency1'], ch['vfoaFrequency2'], ch['vfoaFrequency3'], ch['vfoaFrequency4'])},
             'rx_ctcss': {'label': 'RX CTCSS/DCS', 'width': 90, 'extract': lambda ch: self.ctcss_dcs_from_value(ch.get('rxCtcss', 0))},
@@ -148,8 +170,8 @@ class ChannelTableViewer:
             'mode': {'label': 'Mode', 'width': 60, 'extract': lambda ch: self.MODE_NAMES.get(ch.get('vfoaMode', 6), 'NFM')}
         }
         
-        # Default selected columns (shown by default)
-        self.selected_columns = ['name', 'rx_freq', 'mode']
+        # Default selected columns (shown by default) - tree #0 is R/W checkbox
+        self.selected_columns = ['ch', 'name', 'rx_freq', 'mode']
         
         # Style colors matching professional radio software (using centralized palette)
         self.colors = {
@@ -527,26 +549,728 @@ class ChannelTableViewer:
             self.root.title(self.title)
     
     def _read_from_radio(self):
-        """Placeholder for Read from Radio functionality (UART programming)"""
-        messagebox.showinfo(
-            "Read from Radio",
-            "UART programming not yet implemented.\n\n"
-            "This feature will allow reading the codeplug directly from the radio "
-            "via programming cable.\n\n"
-            "See TODO.md for implementation plan.",
-            parent=self.root
-        )
+        """Read codeplug from radio via UART (selective or all channels)
+        
+        Reads directly into the current codeplug. If channels are selected,
+        only those channels are read. Otherwise reads all 1000 channels.
+        """
+        logger.info("=== _read_from_radio() called ===")
+        
+        if not SERIAL_AVAILABLE:
+            logger.error("pyserial not available")
+            messagebox.showerror(
+                "pyserial Not Installed",
+                "The pyserial library is required for radio programming.\n\n"
+                "Install it with:\n"
+                "    pip install pyserial",
+                parent=self.root
+            )
+            return
+        
+        # Show serial port selection dialog
+        port = self._select_serial_port("Read from Radio")
+        if not port:
+            logger.info("User cancelled port selection")
+            return
+        
+        logger.info(f"Selected port: {port}")
+        
+        # Check if specific channels are selected
+        selected_ids = self._get_selected_channel_ids()
+        selected_count = len(selected_ids)
+        logger.info(f"Selected channel IDs for read: {selected_ids[:10]}... (total: {selected_count})")
+        
+        # Determine read mode based on selection
+        if selected_count > 0:
+            # Read only selected channels
+            channel_indices = [int(ch_id) for ch_id in selected_ids if ch_id.isdigit()]
+            total_channels = len(channel_indices)
+            read_mode = 'selected'
+        else:
+            # Read all 1000 channels
+            channel_indices = None
+            total_channels = 1000
+            read_mode = 'all'
+        
+        logger.info(f"Read mode: {read_mode}, total_channels: {total_channels}")
+        
+        # Create progress dialog
+        progress_dialog = self._create_progress_dialog("Reading from Radio", total_channels)
+        
+        try:
+            logger.info(f"Connecting to radio on {port}...")
+            radio = PMR171Radio(port)
+            radio.connect()
+            logger.info("Connected to radio")
+            
+            def progress_callback(current, total, message):
+                progress_dialog['var'].set(current)
+                progress_dialog['label'].config(text=message)
+                progress_dialog['dialog'].update()
+            
+            def cancel_check():
+                return self.cancel_operation
+            
+            # Read channels based on mode
+            if read_mode in ('selected', 'first50'):
+                logger.info(f"Reading {len(channel_indices)} selected/first50 channels...")
+                # Selected or first 50 - use read_selected_channels with specific indices
+                channels_read = radio.read_selected_channels(
+                    channel_indices, progress_callback, cancel_check)
+                was_cancelled = self.cancel_operation
+                radio.disconnect()
+                
+                logger.info(f"Read complete. Channels read: {len(channels_read)}, was_cancelled: {was_cancelled}")
+                
+                # Close progress dialog
+                progress_dialog['dialog'].destroy()
+                
+                if was_cancelled:
+                    messagebox.showinfo(
+                        "Read Cancelled",
+                        f"Read operation cancelled.\n"
+                        f"Read {len(channels_read)} of {total_channels} selected channels.",
+                        parent=self.root
+                    )
+                
+                if channels_read:
+                    logger.info(f"Processing {len(channels_read)} read channels...")
+                    
+                    # Log first few channels for debugging
+                    for i, ch in enumerate(channels_read[:5]):
+                        logger.debug(f"  Channel {ch.index}: rx_freq={ch.rx_freq_mhz:.6f} MHz, name='{ch.name}'")
+                    
+                    # Save state for undo
+                    self._save_state("Read selected channels from radio")
+                    logger.info("Saved undo state")
+                    
+                    # Log current channels state before update
+                    logger.info(f"Current self.channels has {len(self.channels)} channels")
+                    
+                    # Update only the read channels - use the REQUESTED index as key
+                    # in case radio response has different index
+                    for ch in channels_read:
+                        ch_key = str(ch.index)
+                        new_data = ch.to_dict()
+                        # Debug: verify data is different
+                        if ch_key in self.channels:
+                            old_freq = (
+                                (self.channels[ch_key].get('vfoaFrequency1', 0) << 24) |
+                                (self.channels[ch_key].get('vfoaFrequency2', 0) << 16) |
+                                (self.channels[ch_key].get('vfoaFrequency3', 0) << 8) |
+                                self.channels[ch_key].get('vfoaFrequency4', 0)
+                            )
+                            new_freq = (
+                                (new_data.get('vfoaFrequency1', 0) << 24) |
+                                (new_data.get('vfoaFrequency2', 0) << 16) |
+                                (new_data.get('vfoaFrequency3', 0) << 8) |
+                                new_data.get('vfoaFrequency4', 0)
+                            )
+                            logger.info(f"Channel {ch_key}: Old freq={old_freq/1e6:.6f} MHz -> New freq={new_freq/1e6:.6f} MHz")
+                        else:
+                            logger.info(f"Channel {ch_key}: NEW channel (not in current codeplug)")
+                        self.channels[ch_key] = new_data
+                    
+                    logger.info(f"After update, self.channels has {len(self.channels)} channels")
+                    
+                    # Clear current channel to force re-selection
+                    old_channel = self.current_channel
+                    self.current_channel = None
+                    logger.info(f"Reset current_channel from {old_channel} to None")
+                    
+                    # Rebuild tree - this will auto-select first channel
+                    logger.info("Rebuilding channel tree...")
+                    self._rebuild_channel_tree()
+                    logger.info("Channel tree rebuilt")
+                    
+                    # Now explicitly select and display the originally selected channel
+                    if old_channel and old_channel in self.channels:
+                        logger.info(f"Re-selecting previous channel {old_channel}")
+                        # Find the tree item for this channel and select it
+                        for item in self._get_all_channel_items():
+                            tags = self.channel_tree.item(item, 'tags')
+                            if tags and tags[0] == old_channel:
+                                self.channel_tree.selection_set(item)
+                                self.channel_tree.focus(item)
+                                self.channel_tree.see(item)
+                                # Manually update current_channel and populate tabs
+                                self.current_channel = old_channel
+                                ch_data = self.channels[old_channel]
+                                ch_name = ch_data['channelName'].rstrip('\u0000').strip() or "(empty)"
+                                self.detail_header.config(text=f"Channel {old_channel} - {ch_name}")
+                                self._populate_general_tab(ch_data)
+                                self._populate_freq_tab(ch_data)
+                                self._populate_dmr_tab(ch_data)
+                                self._populate_advanced_tab(ch_data)
+                                self._populate_raw_tab(ch_data)
+                                logger.info(f"Re-selected and populated channel {old_channel}")
+                                break
+                    
+                    if not was_cancelled:
+                        messagebox.showinfo(
+                            "Read Complete",
+                            f"Successfully read {len(channels_read)} channels from radio.",
+                            parent=self.root
+                        )
+                    self.status_label.config(text=f"Read {len(channels_read)} channels from radio")
+                else:
+                    logger.warning("No channels were read from radio!")
+            else:
+                # Read all channels
+                logger.info("Reading ALL 1000 channels...")
+                from ..radio.pmr171_uart import channels_to_codeplug
+                channels_read = radio.read_all_channels(
+                    progress_callback, include_empty=True, cancel_check=cancel_check)
+                was_cancelled = self.cancel_operation
+                radio.disconnect()
+                
+                logger.info(f"Read complete. Channels read: {len(channels_read)}, was_cancelled: {was_cancelled}")
+                
+                # Close progress dialog
+                progress_dialog['dialog'].destroy()
+                
+                if was_cancelled:
+                    messagebox.showinfo(
+                        "Read Cancelled",
+                        f"Read operation cancelled.\n"
+                        f"Read {len(channels_read)} of 1000 channels.",
+                        parent=self.root
+                    )
+                
+                if channels_read:
+                    logger.info(f"Converting {len(channels_read)} channels to codeplug format...")
+                    # Convert to codeplug format
+                    codeplug = channels_to_codeplug(channels_read)
+                    logger.info(f"Codeplug created with {len(codeplug)} channels")
+                    
+                    # Count non-empty channels
+                    non_empty = sum(1 for ch in codeplug.values() 
+                                  if ch.get('vfoaMode', 255) != 255 and 
+                                  (ch.get('vfoaFrequency1', 0) != 0 or ch.get('vfoaFrequency2', 0) != 0))
+                    logger.info(f"Non-empty channels: {non_empty}")
+                    
+                    # Update current codeplug directly
+                    logger.info("Updating current codeplug with read data")
+                    self._save_state("Read from radio")
+                    logger.info("Saved undo state")
+                    
+                    logger.info(f"Replacing self.channels (was {len(self.channels)}) with codeplug ({len(codeplug)})")
+                    self.channels = codeplug
+                    self.current_channel = None
+                    
+                    # Set a suggested filename for saving (radio_readback with timestamp)
+                    now = datetime.now()
+                    suggested_filename = f"radio_readback_{now.strftime('%y%m%d_%H%M')}.json"
+                    suggested_path = Path(__file__).parent.parent.parent / suggested_filename
+                    self._update_file_identifier(suggested_path)
+                    logger.info(f"Set suggested filename: {suggested_filename}")
+                    
+                    # Rebuild tree
+                    logger.info("Rebuilding channel tree...")
+                    self._rebuild_channel_tree()
+                    logger.info("Channel tree rebuilt")
+                    
+                    if not was_cancelled:
+                        messagebox.showinfo(
+                            "Read Complete",
+                            f"Successfully read {len(codeplug)} channels from radio.\n"
+                            f"({non_empty} programmed, {len(codeplug) - non_empty} empty)\n\n"
+                            f"Use File > Save to save this data.",
+                            parent=self.root
+                        )
+                    self.status_label.config(text=f"Read {len(codeplug)} channels from radio")
+                else:
+                    logger.warning("No channels were read from radio!")
+            
+            logger.info("=== _read_from_radio() completed successfully ===")
+            
+        except PMR171Error as e:
+            logger.error(f"PMR171Error: {e}")
+            progress_dialog['dialog'].destroy()
+            messagebox.showerror("Read Error", f"Failed to read from radio:\n\n{e}", parent=self.root)
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}", exc_info=True)
+            progress_dialog['dialog'].destroy()
+            messagebox.showerror("Error", f"Unexpected error:\n\n{e}", parent=self.root)
     
     def _write_to_radio(self):
-        """Placeholder for Write to Radio functionality (UART programming)"""
-        messagebox.showinfo(
-            "Write to Radio",
-            "UART programming not yet implemented.\n\n"
-            "This feature will allow writing the codeplug directly to the radio "
-            "via programming cable.\n\n"
-            "See TODO.md for implementation plan.",
-            parent=self.root
-        )
+        """Write codeplug to radio via UART (selective or all channels)"""
+        if not SERIAL_AVAILABLE:
+            messagebox.showerror(
+                "pyserial Not Installed",
+                "The pyserial library is required for radio programming.\n\n"
+                "Install it with:\n"
+                "    pip install pyserial",
+                parent=self.root
+            )
+            return
+        
+        if not self.channels:
+            messagebox.showwarning(
+                "No Channels",
+                "No channel data to write. Please load or create channels first.",
+                parent=self.root
+            )
+            return
+        
+        # Show serial port selection dialog
+        port = self._select_serial_port("Write to Radio")
+        if not port:
+            return
+        
+        # Check if specific channels are selected
+        selected_ids = self._get_selected_channel_ids()
+        selected_count = len(selected_ids)
+        
+        # Determine write mode
+        if selected_count > 0:
+            # Selective write
+            result = messagebox.askyesnocancel(
+                "Write Mode",
+                f"You have {selected_count} channels selected for writing.\n\n"
+                "Yes = Write only selected channels\n"
+                "No = Write ALL channels in codeplug\n"
+                "Cancel = Abort",
+                parent=self.root
+            )
+            if result is None:
+                return
+            write_selected_only = result
+        else:
+            # No selection - write all
+            programmed = sum(1 for ch in self.channels.values() 
+                            if ch.get('vfoaMode', 255) != 255)
+            result = messagebox.askyesno(
+                "Confirm Write",
+                f"Write all {len(self.channels)} channels ({programmed} programmed) to radio on {port}?\n\n"
+                "⚠️ WARNING: This will overwrite channels on the radio!\n\n"
+                "Make sure:\n"
+                "• The radio is connected and powered on\n"
+                "• You have a backup of your current radio configuration\n"
+                "• The channel data has been validated\n\n"
+                "Tip: Use the selection tools to write specific channels only.",
+                parent=self.root
+            )
+            if not result:
+                return
+            write_selected_only = False
+        
+        # Build list of channels to write
+        if write_selected_only:
+            channels_to_write = []
+            for ch_id in selected_ids:
+                if ch_id in self.channels:
+                    channels_to_write.append(ChannelData.from_dict(self.channels[ch_id]))
+            total_channels = len(channels_to_write)
+        else:
+            channels_to_write = codeplug_to_channels(self.channels)
+            total_channels = len(channels_to_write)
+        
+        # Create progress dialog
+        progress_dialog = self._create_progress_dialog("Writing to Radio", total_channels)
+        
+        try:
+            radio = PMR171Radio(port)
+            radio.connect()
+            
+            def progress_callback(current, total, message):
+                progress_dialog['var'].set(current)
+                progress_dialog['label'].config(text=message)
+                progress_dialog['dialog'].update()
+            
+            def cancel_check():
+                return self.cancel_operation
+            
+            # Write channels
+            success_count = radio.write_all_channels(
+                channels_to_write, progress_callback, cancel_check)
+            was_cancelled = self.cancel_operation
+            radio.disconnect()
+            
+            # Close progress dialog
+            progress_dialog['dialog'].destroy()
+            
+            if was_cancelled:
+                messagebox.showinfo(
+                    "Write Cancelled",
+                    f"Write operation cancelled.\n"
+                    f"Wrote {success_count} of {total_channels} channels.",
+                    parent=self.root
+                )
+            else:
+                mode_str = "selected" if write_selected_only else "total"
+                messagebox.showinfo(
+                    "Write Complete",
+                    f"Successfully wrote {success_count} of {total_channels} {mode_str} channels to radio.",
+                    parent=self.root
+                )
+            self.status_label.config(text=f"Wrote {success_count} channels to radio")
+            
+        except PMR171Error as e:
+            progress_dialog['dialog'].destroy()
+            messagebox.showerror("Write Error", f"Failed to write to radio:\n\n{e}", parent=self.root)
+        except Exception as e:
+            progress_dialog['dialog'].destroy()
+            messagebox.showerror("Error", f"Unexpected error:\n\n{e}", parent=self.root)
+    
+    def _select_serial_port(self, title: str) -> Optional[str]:
+        """Show dialog to select a serial port
+        
+        Args:
+            title: Dialog title
+            
+        Returns:
+            Selected port name or None if cancelled
+        """
+        ports = list_serial_ports()
+        
+        if not ports:
+            messagebox.showwarning(
+                "No Serial Ports",
+                "No serial ports found.\n\n"
+                "Please connect the programming cable and try again.",
+                parent=self.root
+            )
+            return None
+        
+        # Create port selection dialog
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("450x300")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Header
+        header_frame = tk.Frame(dialog, bg=BLUE_PALETTE['header'], height=40)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+        tk.Label(header_frame, text="Select Serial Port", font=('Arial', 11, 'bold'),
+                bg=BLUE_PALETTE['header'], fg='white').pack(side=tk.LEFT, padx=10, pady=8)
+        
+        # Port list frame
+        list_frame = ttk.Frame(dialog, padding=10)
+        list_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Scrollbar
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        
+        # Listbox with ports
+        port_listbox = tk.Listbox(list_frame, font=('Consolas', 10),
+                                 yscrollcommand=scrollbar.set, selectmode=tk.SINGLE)
+        port_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=port_listbox.yview)
+        
+        # Add ports to listbox
+        for port_info in ports:
+            display = f"{port_info['port']} - {port_info['description']}"
+            port_listbox.insert(tk.END, display)
+        
+        # Select first port by default
+        if ports:
+            port_listbox.selection_set(0)
+        
+        # Result holder
+        selected_port = {'value': None}
+        
+        # Button frame
+        button_frame = ttk.Frame(dialog, padding=10)
+        button_frame.pack(fill=tk.X)
+        
+        def on_ok():
+            selection = port_listbox.curselection()
+            if selection:
+                selected_port['value'] = ports[selection[0]]['port']
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        def on_double_click(event):
+            on_ok()
+        
+        port_listbox.bind('<Double-Button-1>', on_double_click)
+        
+        ttk.Button(button_frame, text="Connect", command=on_ok, width=12).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Cancel", command=on_cancel, width=12).pack(side=tk.LEFT, padx=5)
+        ttk.Button(button_frame, text="Refresh", 
+                  command=lambda: self._refresh_port_list(port_listbox, ports), width=12).pack(side=tk.RIGHT, padx=5)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Wait for dialog to close
+        self.root.wait_window(dialog)
+        
+        return selected_port['value']
+    
+    def _refresh_port_list(self, listbox: tk.Listbox, ports: list):
+        """Refresh the serial port list"""
+        new_ports = list_serial_ports()
+        ports.clear()
+        ports.extend(new_ports)
+        
+        listbox.delete(0, tk.END)
+        for port_info in new_ports:
+            display = f"{port_info['port']} - {port_info['description']}"
+            listbox.insert(tk.END, display)
+        
+        if new_ports:
+            listbox.selection_set(0)
+    
+    def _show_read_destination_dialog(self, selected_count: int) -> Optional[dict]:
+        """Show dialog to select where to save read data and which channels to read
+        
+        Args:
+            selected_count: Number of channels currently selected
+            
+        Returns:
+            Dictionary with 'to_new_file', 'read_mode', and optionally 'filepath' keys, 
+            or None if cancelled
+        """
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Read from Radio")
+        dialog.geometry("520x550")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        
+        # Header
+        header_frame = tk.Frame(dialog, bg=BLUE_PALETTE['header'], height=40)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+        tk.Label(header_frame, text="Read from Radio - Options", font=('Arial', 11, 'bold'),
+                bg=BLUE_PALETTE['header'], fg='white').pack(side=tk.LEFT, padx=10, pady=8)
+        
+        # Content
+        content = ttk.Frame(dialog, padding=20)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Result holder
+        result = {'value': None}
+        
+        # === Channel Range Selection ===
+        ttk.Label(content, text="Which channels to read:", 
+                 font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 10))
+        
+        # Default selection based on whether channels are selected
+        if selected_count > 0:
+            default_range = 'selected'
+        else:
+            default_range = 'first50'  # Default to first 50 for faster reads
+        
+        range_var = tk.StringVar(value=default_range)
+        
+        range_frame = ttk.Frame(content)
+        range_frame.pack(fill=tk.X, pady=5)
+        
+        # Option: Selected channels (always show, but indicate count)
+        selected_text = f"Read {selected_count} selected channel(s)" if selected_count > 0 else "Read selected channels (0 selected)"
+        selected_rb = ttk.Radiobutton(range_frame, 
+            text=selected_text, 
+            variable=range_var, value='selected')
+        selected_rb.pack(anchor='w', padx=10, pady=3)
+        
+        selected_desc = ttk.Label(range_frame,
+            text="    Only reads channels you've checked (☑) in the channel list.",
+            font=('Arial', 9), foreground='#666666')
+        selected_desc.pack(anchor='w', padx=10)
+        
+        # Disable selected option if no channels are selected
+        if selected_count == 0:
+            selected_rb.config(state='disabled')
+        
+        # Option: First 50 channels (quick read)
+        first50_rb = ttk.Radiobutton(range_frame, text="Read first 50 channels (quick)", 
+                                     variable=range_var, value='first50')
+        first50_rb.pack(anchor='w', padx=10, pady=(8, 3))
+        
+        first50_desc = ttk.Label(range_frame,
+            text="    Fast option - reads channels 0-49 only.",
+            font=('Arial', 9), foreground='#666666')
+        first50_desc.pack(anchor='w', padx=10)
+        
+        # Option: All 1000 channels
+        all_rb = ttk.Radiobutton(range_frame, text="Read ALL 1000 channels (full backup)", 
+                                 variable=range_var, value='all')
+        all_rb.pack(anchor='w', padx=10, pady=(8, 3))
+        
+        all_desc = ttk.Label(range_frame,
+            text="    Complete backup - takes several minutes.",
+            font=('Arial', 9), foreground='#666666')
+        all_desc.pack(anchor='w', padx=10)
+        
+        # === Destination Selection ===
+        ttk.Separator(content, orient='horizontal').pack(fill='x', pady=15)
+        
+        ttk.Label(content, text="Where to save the data:", 
+                 font=('Arial', 10, 'bold')).pack(anchor='w', pady=(0, 10))
+        
+        dest_var = tk.StringVar(value='new_file')  # Default to new file for safety
+        
+        dest_frame = ttk.Frame(content)
+        dest_frame.pack(fill=tk.X, pady=5)
+        
+        # Option 1: New file (safest - recommended)
+        new_file_rb = ttk.Radiobutton(dest_frame, text="Save to NEW file (recommended)", 
+                                       variable=dest_var, value='new_file')
+        new_file_rb.pack(anchor='w', padx=10, pady=3)
+        
+        new_file_desc = ttk.Label(dest_frame, 
+            text="    Creates a new JSON file with the radio data.\n"
+                 "    Your currently open file is NOT modified.",
+            font=('Arial', 9), foreground='#666666')
+        new_file_desc.pack(anchor='w', padx=10)
+        
+        # Option 2: Update current (if file is open)
+        current_file_name = self.current_file.name if self.current_file else "(no file open)"
+        update_rb = ttk.Radiobutton(dest_frame, 
+            text=f"Update current codeplug ({current_file_name})", 
+            variable=dest_var, value='update_current')
+        update_rb.pack(anchor='w', padx=10, pady=(8, 3))
+        
+        update_desc = ttk.Label(dest_frame, 
+            text="    Replaces channel data in the currently open codeplug.\n"
+                 "    Changes can be undone with Edit > Undo.",
+            font=('Arial', 9), foreground='#666666')
+        update_desc.pack(anchor='w', padx=10)
+        
+        # Button frame with LARGE prominent Start Read button
+        button_frame = tk.Frame(dialog, bg='#E8E8E8', pady=15)
+        button_frame.pack(fill=tk.X, side=tk.BOTTOM)
+        
+        def on_start_read():
+            to_new_file = (dest_var.get() == 'new_file')
+            read_mode = range_var.get()  # 'selected', 'first50', or 'all'
+            
+            if to_new_file:
+                # Ask for file path immediately
+                now = datetime.now()
+                default_filename = f"radio_readback_{now.strftime('%y%m%d_%H%M')}.json"
+                default_dir = str(Path(__file__).parent.parent.parent)
+                
+                filepath = filedialog.asksaveasfilename(
+                    title="Save Radio Readback As",
+                    initialdir=default_dir,
+                    initialfile=default_filename,
+                    defaultextension=".json",
+                    filetypes=[("JSON files", "*.json"), ("All files", "*.*")],
+                    parent=dialog
+                )
+                
+                if not filepath:
+                    return  # User cancelled file dialog
+                
+                result['value'] = {
+                    'to_new_file': True,
+                    'read_mode': read_mode,
+                    'filepath': Path(filepath)
+                }
+            else:
+                result['value'] = {
+                    'to_new_file': False,
+                    'read_mode': read_mode,
+                    'filepath': None
+                }
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        # LARGE prominent Start Read button
+        start_btn = tk.Button(button_frame, text="📻  Start Read", command=on_start_read, 
+                             width=20, height=2, font=('Arial', 12, 'bold'),
+                             bg=BLUE_PALETTE['primary'], fg='white',
+                             activebackground=BLUE_PALETTE['primary_dark'], activeforeground='white',
+                             cursor='hand2')
+        start_btn.pack(side=tk.LEFT, padx=15)
+        
+        cancel_btn = tk.Button(button_frame, text="Cancel", command=on_cancel, 
+                              width=12, height=2, font=('Arial', 10))
+        cancel_btn.pack(side=tk.LEFT, padx=5)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Wait for dialog
+        self.root.wait_window(dialog)
+        
+        return result['value']
+    
+    def _create_progress_dialog(self, title: str, total: int) -> dict:
+        """Create a progress dialog for long operations with Cancel button
+        
+        Args:
+            title: Dialog title
+            total: Total number of steps
+            
+        Returns:
+            Dictionary with 'dialog', 'var', 'bar', 'label', 'cancelled' keys
+        """
+        # Reset cancel flag
+        self.cancel_operation = False
+        
+        dialog = tk.Toplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("400x150")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        dialog.resizable(False, False)
+        
+        # Prevent closing via X button during operation
+        dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+        
+        # Header
+        header_frame = tk.Frame(dialog, bg=BLUE_PALETTE['header'], height=30)
+        header_frame.pack(fill=tk.X)
+        header_frame.pack_propagate(False)
+        tk.Label(header_frame, text=title, font=('Arial', 10, 'bold'),
+                bg=BLUE_PALETTE['header'], fg='white').pack(side=tk.LEFT, padx=10, pady=5)
+        
+        # Progress content
+        content = ttk.Frame(dialog, padding=15)
+        content.pack(fill=tk.BOTH, expand=True)
+        
+        # Progress variable and bar
+        progress_var = tk.IntVar(value=0)
+        progress_bar = ttk.Progressbar(content, variable=progress_var, maximum=total, length=350)
+        progress_bar.pack(fill=tk.X, pady=5)
+        
+        # Status label
+        status_label = ttk.Label(content, text="Starting...", font=('Arial', 9))
+        status_label.pack(anchor='w')
+        
+        # Cancel button frame
+        button_frame = ttk.Frame(content)
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        def on_cancel():
+            self.cancel_operation = True
+            status_label.config(text="Cancelling after current channel...")
+            cancel_btn.config(state='disabled')
+        
+        cancel_btn = ttk.Button(button_frame, text="Cancel", command=on_cancel, width=10)
+        cancel_btn.pack(side=tk.RIGHT)
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() - dialog.winfo_width()) // 2
+        y = self.root.winfo_y() + (self.root.winfo_height() - dialog.winfo_height()) // 2
+        dialog.geometry(f"+{x}+{y}")
+        
+        return {
+            'dialog': dialog,
+            'var': progress_var,
+            'bar': progress_bar,
+            'label': status_label,
+            'cancel_btn': cancel_btn
+        }
 
     def _create_tree_navigation(self, parent):
         """Create tree navigation panel (left side)"""
@@ -710,6 +1434,57 @@ class ChannelTableViewer:
         # Bind search to filter as user types
         self.search_var.trace_add('write', lambda *args: self._on_search_changed())
         
+        # === RADIO SELECTION TOOLBAR (for Read/Write operations) ===
+        selection_frame = ttk.LabelFrame(parent, text="Radio Read/Write Selection", padding=5)
+        selection_frame.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Row 1: Quick select buttons
+        quick_select_row = ttk.Frame(selection_frame)
+        quick_select_row.pack(fill=tk.X, pady=2)
+        
+        select_all_btn = ttk.Button(quick_select_row, text="Select All", width=10,
+                  command=self._select_all_for_radio)
+        select_all_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(select_all_btn, "Select all channels for read/write")
+        
+        select_none_btn = ttk.Button(quick_select_row, text="Select None", width=10,
+                  command=self._deselect_all_for_radio)
+        select_none_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(select_none_btn, "Deselect all channels")
+        
+        ttk.Separator(quick_select_row, orient=tk.VERTICAL).pack(side=tk.LEFT, fill=tk.Y, padx=5)
+        
+        active_only_btn = ttk.Button(quick_select_row, text="Programmed", width=12,
+                  command=self._select_active_channels)
+        active_only_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(active_only_btn, "Select only programmed channels (skip empty slots)")
+        
+        active_range_btn = ttk.Button(quick_select_row, text="Full Range", width=12,
+                  command=self._select_active_range)
+        active_range_btn.pack(side=tk.LEFT, padx=2)
+        ToolTip(active_range_btn, "Select from first to last programmed channel (including empty slots)")
+        
+        # Row 2: Range selection
+        range_row = ttk.Frame(selection_frame)
+        range_row.pack(fill=tk.X, pady=2)
+        
+        ttk.Label(range_row, text="From:").pack(side=tk.LEFT, padx=(0, 2))
+        self.range_from_var = tk.StringVar(value="0")
+        range_from_entry = ttk.Entry(range_row, textvariable=self.range_from_var, width=6)
+        range_from_entry.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Label(range_row, text="To:").pack(side=tk.LEFT, padx=(5, 2))
+        self.range_to_var = tk.StringVar(value="999")
+        range_to_entry = ttk.Entry(range_row, textvariable=self.range_to_var, width=6)
+        range_to_entry.pack(side=tk.LEFT, padx=2)
+        
+        ttk.Button(range_row, text="Select Range", width=12,
+                  command=self._select_channel_range).pack(side=tk.LEFT, padx=5)
+        
+        # Selection count label
+        self.selection_count_label = ttk.Label(range_row, text="Selected: 0", font=('Arial', 9, 'bold'))
+        self.selection_count_label.pack(side=tk.RIGHT, padx=5)
+        
         # Tree with scrollbar
         tree_frame = ttk.Frame(parent)
         tree_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -734,6 +1509,9 @@ class ChannelTableViewer:
         
         # Bind selection event
         self.channel_tree.bind('<<TreeviewSelect>>', self._on_channel_select)
+        
+        # Bind click to handle checkbox column clicks
+        self.channel_tree.bind('<Button-1>', self._on_tree_click)
         
         # Bind right-click context menu
         self.channel_tree.bind('<Button-3>', self._show_context_menu)
@@ -1453,9 +2231,10 @@ class ChannelTableViewer:
     
     def _configure_tree_columns(self):
         """Configure tree columns based on selected columns"""
-        # Configure channel number column
-        self.channel_tree.heading('#0', text='Ch')
-        self.channel_tree.column('#0', width=50)
+        # Configure R/W selection column (#0 - leftmost, uses 'text' in insert)
+        # Use a programming/radio icon for the header
+        self.channel_tree.heading('#0', text='⚡')  # Programming icon (lightning bolt)
+        self.channel_tree.column('#0', width=35, anchor='center')
         
         # Reconfigure the tree with selected columns
         self.channel_tree['columns'] = tuple(self.selected_columns)
@@ -1556,7 +2335,10 @@ class ChannelTableViewer:
                 
                 column_values = []
                 for col_id in self.selected_columns:
-                    if col_id in self.available_columns:
+                    if col_id == 'sel':
+                        # Special handling for selection checkbox column
+                        column_values.append(self._get_checkbox_display(ch_id))
+                    elif col_id in self.available_columns:
                         extract_func = self.available_columns[col_id]['extract']
                         column_values.append(extract_func(ch_data))
                 
@@ -1569,9 +2351,10 @@ class ChannelTableViewer:
                 else:
                     parent_node = ''  # Root level when not grouping
                 
-                # Insert item
+                # Insert item - checkbox in #0 (text), data in columns
+                checkbox = self._get_checkbox_display(ch_id)
                 item_id = self.channel_tree.insert(parent_node, 'end',
-                    text=ch_id,
+                    text=checkbox,
                     values=tuple(column_values),
                     tags=(ch_id,)
                 )
@@ -1580,7 +2363,8 @@ class ChannelTableViewer:
                 if not show_empty or search_text:
                     continue
                     
-                empty_values = ['(empty slot)'] + ['—'] * (len(self.selected_columns) - 1)
+                # Empty slots get empty checkbox and placeholder values
+                empty_values = [ch_id, '(empty slot)'] + ['—'] * (len(self.selected_columns) - 2)
                 
                 # Determine parent for empty slots
                 if group_by_type:
@@ -1589,7 +2373,7 @@ class ChannelTableViewer:
                     parent_node = ''  # Root level
                 
                 item_id = self.channel_tree.insert(parent_node, 'end',
-                    text=ch_id,
+                    text='☐',  # Empty checkbox
                     values=tuple(empty_values),
                     tags=(ch_id, 'empty')  # Tag as empty for styling
                 )
@@ -1649,6 +2433,22 @@ class ChannelTableViewer:
                     if self.channel_tree.item(child, 'tags'):
                         return child
         return None
+    
+    def _get_all_channel_items(self):
+        """Get all channel items in the tree (skip group nodes)
+        
+        Yields:
+            Tree item IDs for all channel items
+        """
+        for item in self.channel_tree.get_children():
+            # Check if this item has tags (is a channel, not a group)
+            if self.channel_tree.item(item, 'tags'):
+                yield item
+            else:
+                # It's a group node - yield its children
+                for child in self.channel_tree.get_children(item):
+                    if self.channel_tree.item(child, 'tags'):
+                        yield child
     
     def _create_detail_panel(self, parent):
         """Create tabbed detail panel (right side)"""
@@ -3040,6 +3840,201 @@ class ChannelTableViewer:
     def _on_search_changed(self):
         """Handle search text changes - filter tree in real-time"""
         self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+    
+    # === Radio Selection Methods ===
+    
+    def _select_all_for_radio(self):
+        """Select all visible channels for radio read/write"""
+        count = 0
+        for ch_id in self.channels.keys():
+            if ch_id not in self.channel_checkboxes:
+                self.channel_checkboxes[ch_id] = tk.BooleanVar(value=True)
+            else:
+                self.channel_checkboxes[ch_id].set(True)
+            count += 1
+        self._update_selection_count()
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        self.status_label.config(text=f"Selected all {count} channels for radio operation")
+    
+    def _deselect_all_for_radio(self):
+        """Deselect all channels for radio read/write"""
+        for var in self.channel_checkboxes.values():
+            var.set(False)
+        self._update_selection_count()
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        self.status_label.config(text="Deselected all channels")
+    
+    def _select_active_channels(self):
+        """Select only active/programmed channels (skip empty slots)
+        
+        A channel is considered "programmed" if it has a non-empty name.
+        Channels with blank names or "(empty)" names are skipped.
+        """
+        # First deselect all
+        for var in self.channel_checkboxes.values():
+            var.set(False)
+        
+        count = 0
+        for ch_id, ch_data in self.channels.items():
+            # Check if channel is programmed by checking if it has a meaningful name
+            # Empty channels have blank names (just null chars or whitespace)
+            ch_name = ch_data.get('channelName', '').rstrip('\u0000').strip()
+            is_programmed = bool(ch_name)  # Non-empty name means programmed
+            
+            if ch_id not in self.channel_checkboxes:
+                self.channel_checkboxes[ch_id] = tk.BooleanVar(value=is_programmed)
+            else:
+                self.channel_checkboxes[ch_id].set(is_programmed)
+            
+            if is_programmed:
+                count += 1
+        
+        self._update_selection_count()
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        self.status_label.config(text=f"Selected {count} programmed channels (skipped empty)")
+    
+    def _select_active_range(self):
+        """Select all channels from first to last programmed (including empty slots in between)"""
+        # First deselect all
+        for var in self.channel_checkboxes.values():
+            var.set(False)
+        
+        # Find first and last active channel
+        active_ids = []
+        for ch_id, ch_data in self.channels.items():
+            is_active = (ch_data.get('vfoaMode', 255) != 255 and 
+                        (ch_data.get('vfoaFrequency1', 0) != 0 or 
+                         ch_data.get('vfoaFrequency2', 0) != 0))
+            if is_active and ch_id.isdigit():
+                active_ids.append(int(ch_id))
+        
+        if not active_ids:
+            self.status_label.config(text="No programmed channels found")
+            return
+        
+        first_active = min(active_ids)
+        last_active = max(active_ids)
+        
+        count = 0
+        for ch_id in self.channels.keys():
+            if ch_id.isdigit():
+                ch_num = int(ch_id)
+                in_range = first_active <= ch_num <= last_active
+                
+                if ch_id not in self.channel_checkboxes:
+                    self.channel_checkboxes[ch_id] = tk.BooleanVar(value=in_range)
+                else:
+                    self.channel_checkboxes[ch_id].set(in_range)
+                
+                if in_range:
+                    count += 1
+        
+        self._update_selection_count()
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        self.status_label.config(text=f"Selected range {first_active}-{last_active} ({count} channels, including empty slots)")
+    
+    def _select_channel_range(self):
+        """Select channels within the specified From/To range"""
+        try:
+            from_ch = int(self.range_from_var.get())
+            to_ch = int(self.range_to_var.get())
+        except ValueError:
+            messagebox.showwarning("Invalid Range", 
+                                  "Please enter valid channel numbers.",
+                                  parent=self.root)
+            return
+        
+        if from_ch > to_ch:
+            from_ch, to_ch = to_ch, from_ch  # Swap if reversed
+        
+        # First deselect all
+        for var in self.channel_checkboxes.values():
+            var.set(False)
+        
+        count = 0
+        for ch_id in self.channels.keys():
+            if ch_id.isdigit():
+                ch_num = int(ch_id)
+                in_range = from_ch <= ch_num <= to_ch
+                
+                if ch_id not in self.channel_checkboxes:
+                    self.channel_checkboxes[ch_id] = tk.BooleanVar(value=in_range)
+                else:
+                    self.channel_checkboxes[ch_id].set(in_range)
+                
+                if in_range:
+                    count += 1
+        
+        self._update_selection_count()
+        self._rebuild_channel_tree(reselect_channel_id=self.current_channel)
+        self.status_label.config(text=f"Selected range {from_ch}-{to_ch} ({count} channels)")
+    
+    def _update_selection_count(self):
+        """Update the selection count label"""
+        count = sum(1 for var in self.channel_checkboxes.values() if var.get())
+        if hasattr(self, 'selection_count_label'):
+            self.selection_count_label.config(text=f"Selected: {count}")
+    
+    def _get_selected_channel_ids(self) -> List[str]:
+        """Get list of channel IDs selected for radio operation
+        
+        Returns:
+            List of channel ID strings that are selected
+        """
+        selected = []
+        for ch_id, var in self.channel_checkboxes.items():
+            if var.get() and ch_id in self.channels:
+                selected.append(ch_id)
+        return sorted(selected, key=lambda x: int(x) if x.isdigit() else 0)
+    
+    def _on_tree_click(self, event):
+        """Handle click on tree - toggle checkbox if clicking on R/W column (#0)"""
+        # Identify the clicked region
+        region = self.channel_tree.identify_region(event.x, event.y)
+        
+        # Get the column - #0 is the tree column (R/W checkbox)
+        column = self.channel_tree.identify_column(event.x)
+        
+        # Check if it's the R/W checkbox column (#0)
+        if column == '#0':
+            # Get the item
+            item = self.channel_tree.identify_row(event.y)
+            if not item:
+                return
+            
+            tags = self.channel_tree.item(item, 'tags')
+            if not tags:
+                return  # Group node
+            
+            ch_id = tags[0]
+            
+            # Toggle the checkbox
+            if ch_id not in self.channel_checkboxes:
+                self.channel_checkboxes[ch_id] = tk.BooleanVar(value=True)
+            else:
+                current = self.channel_checkboxes[ch_id].get()
+                self.channel_checkboxes[ch_id].set(not current)
+            
+            # Update the display (text field is column #0)
+            new_state = self.channel_checkboxes[ch_id].get()
+            new_checkbox = '☑' if new_state else '☐'
+            self.channel_tree.item(item, text=new_checkbox)
+            
+            # Update count
+            self._update_selection_count()
+    
+    def _get_checkbox_display(self, ch_id: str) -> str:
+        """Get the checkbox display character for a channel
+        
+        Args:
+            ch_id: Channel ID
+            
+        Returns:
+            '☑' if selected, '☐' otherwise
+        """
+        if ch_id in self.channel_checkboxes and self.channel_checkboxes[ch_id].get():
+            return '☑'
+        return '☐'
     
     def _move_channel_down(self):
         """Increase channel number by 1 (swap with channel below if occupied)"""
