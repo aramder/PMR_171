@@ -138,10 +138,8 @@ Phase 6: Validation
 | Item | Specification |
 |------|---------------|
 | Radio | PMR-171 (Firmware v1.5+) |
-| Cable | USB-A to USB-C (provided with radio) |
 | Cable | USB-A to USB-C cable (direct connection) |
 | Computer | Windows 11, Python 3.10+ |
-| COM Port | COM3 (varies by system) |
 
 ### 3.2 USB Connection
 
