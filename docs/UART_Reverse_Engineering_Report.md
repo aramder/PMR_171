@@ -407,66 +407,373 @@ Payload breakdown:
 
 ## 7. Implementation
 
-### 7.1 Architecture
+### 7.1 Software Architecture
 
 ```
-┌─────────────────────────────────────────────┐
-│              GUI Application                │
-│         (table_viewer.py)                   │
-├─────────────────────────────────────────────┤
-│              Radio Interface                │
-│            (pmr171_uart.py)                 │
-├───────────────────┬─────────────────────────┤
-│   Read Operations │    Write Operations     │
-│   - read_channel  │    - write_channel      │
-│   - read_all      │    - write_all          │
-├───────────────────┴─────────────────────────┤
-│              PySerial Layer                 │
-│         (serial.Serial)                     │
-└─────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│                      GUI Application                            │
+│                    (table_viewer.py)                            │
+│  ┌─────────────┐  ┌─────────────┐  ┌────────────────────────┐  │
+│  │ File Menu   │  │ Radio Menu  │  │ Channel Table Editor   │  │
+│  │ - Open JSON │  │ - Connect   │  │ - Edit frequencies     │  │
+│  │ - Save JSON │  │ - Read      │  │ - Edit names           │  │
+│  │ - Import CSV│  │ - Write     │  │ - Edit tones           │  │
+│  └─────────────┘  └─────────────┘  └────────────────────────┘  │
+├─────────────────────────────────────────────────────────────────┤
+│                     Radio Interface                             │
+│                   (pmr171_uart.py)                              │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  PMR171Radio Class                                       │   │
+│  │  - connect() / disconnect()                              │   │
+│  │  - read_channel() / write_channel()                      │   │
+│  │  - read_all_channels() / write_all_channels()            │   │
+│  │  - read_codeplug() / write_codeplug()                    │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  ChannelData Dataclass                                   │   │
+│  │  - Frequency conversion (Hz ↔ MHz)                       │   │
+│  │  - CTCSS index ↔ frequency mapping                       │   │
+│  │  - JSON serialization (to_dict / from_dict)              │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  Packet Functions                                        │   │
+│  │  - build_packet() - Construct command packets            │   │
+│  │  - parse_packet() - Decode response packets              │   │
+│  │  - crc16_ccitt() - Calculate CRC checksum                │   │
+│  └─────────────────────────────────────────────────────────┘   │
+├─────────────────────────────────────────────────────────────────┤
+│                      PySerial Layer                             │
+│                    (serial.Serial)                              │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 7.2 Key Code Components
+### 7.2 Core Classes
 
-**Connection Setup:**
+#### 7.2.1 PMR171Radio Class
+
+The main interface for radio communication:
+
 ```python
-import serial
+class PMR171Radio:
+    """PMR-171 Radio UART Interface"""
+    
+    def __init__(self, port: str, baudrate: int = 115200, timeout: float = 1.0):
+        self.port = port
+        self.baudrate = baudrate
+        self.timeout = timeout
+        self._serial: Optional[serial.Serial] = None
+    
+    @property
+    def is_connected(self) -> bool:
+        """Check if serial port is open"""
+        return self._serial is not None and self._serial.is_open
+```
 
-ser = serial.Serial(
-    port='COM3',
-    baudrate=115200,
-    bytesize=8,
-    parity='N',
-    stopbits=1,
-    timeout=1.0
+**Key Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `connect()` | Open serial port, set DTR/RTS high |
+| `disconnect()` | Close serial port |
+| `read_channel(index)` | Read single channel by index |
+| `write_channel(channel)` | Write single channel to radio |
+| `read_all_channels()` | Read all 1000 channels |
+| `write_all_channels(channels)` | Write list of channels |
+| `read_codeplug()` | Read all channels as JSON dict |
+| `write_codeplug(data)` | Write JSON dict to radio |
+
+#### 7.2.2 ChannelData Dataclass
+
+Represents a single channel configuration:
+
+```python
+@dataclass
+class ChannelData:
+    """Represents a single channel configuration"""
+    index: int              # Channel number (0-999)
+    rx_mode: int            # RX operating mode (Mode enum)
+    tx_mode: int            # TX operating mode
+    rx_freq_hz: int         # RX frequency in Hz
+    tx_freq_hz: int         # TX frequency in Hz
+    rx_ctcss_index: int     # RX CTCSS tone index (0-55)
+    tx_ctcss_index: int     # TX CTCSS tone index (0-55)
+    name: str               # Channel name (max 11 chars)
+    
+    @property
+    def rx_freq_mhz(self) -> float:
+        """RX frequency in MHz"""
+        return self.rx_freq_hz / 1_000_000
+    
+    @property
+    def rx_ctcss_hz(self) -> Optional[float]:
+        """RX CTCSS frequency in Hz, or None if disabled"""
+        return CTCSS_TONES.get(self.rx_ctcss_index)
+    
+    @property
+    def is_empty(self) -> bool:
+        """Check if this is an unused channel"""
+        return self.rx_mode == Mode.UNUSED or self.rx_freq_hz == 0
+```
+
+### 7.3 Connection Management
+
+**Opening a Connection:**
+
+```python
+def connect(self) -> None:
+    """Open serial connection to radio."""
+    self._serial = serial.Serial(
+        port=self.port,
+        baudrate=self.baudrate,
+        bytesize=serial.EIGHTBITS,
+        parity=serial.PARITY_NONE,
+        stopbits=serial.STOPBITS_ONE,
+        timeout=self.timeout,
+        rtscts=False,   # Disable hardware flow control
+        dsrdtr=False    # Disable DSR/DTR flow control
+    )
+    
+    # CRITICAL: Set DTR and RTS high to enable programming mode
+    self._serial.dtr = True
+    self._serial.rts = True
+    
+    # Clear buffers and wait for radio to stabilize
+    self._serial.reset_input_buffer()
+    self._serial.reset_output_buffer()
+    time.sleep(0.5)
+```
+
+**Context Manager Support:**
+
+```python
+# Automatic resource management
+with PMR171Radio('COM3') as radio:
+    channels = radio.read_all_channels()
+    # Connection automatically closed on exit
+```
+
+### 7.4 Packet Construction
+
+**Building a Command Packet:**
+
+```python
+def build_packet(command: int, data: bytes = b'') -> bytes:
+    """
+    Build a complete PMR-171 packet.
+    
+    Packet format:
+    | 0xA5 | 0xA5 | 0xA5 | 0xA5 | Length | Command | DATA... | CRC_H | CRC_L |
+    """
+    # Length = command (1) + data + CRC (2)
+    length = 1 + len(data) + 2
+    
+    # Build packet without CRC
+    packet = PACKET_HEADER + bytes([length, command]) + data
+    
+    # Calculate CRC over Length + Command + Data
+    crc_data = bytes([length, command]) + data
+    crc = crc16_ccitt(crc_data)
+    
+    # Append CRC (big-endian)
+    packet += struct.pack('>H', crc)
+    
+    return packet
+```
+
+**Building a Channel Read Request:**
+
+```python
+def read_channel(self, channel_index: int) -> ChannelData:
+    """Read a single channel from the radio."""
+    # Build 2-byte channel index (big-endian)
+    data = struct.pack('>H', channel_index)
+    packet = build_packet(Command.CHANNEL_READ, data)
+    
+    # Send and receive
+    self._send_packet(packet)
+    response = self._receive_packet()
+    
+    # Parse response payload into ChannelData
+    cmd, payload, _ = parse_packet(response)
+    return parse_channel_packet(payload)
+```
+
+### 7.5 Response Parsing
+
+**Parsing a Received Packet:**
+
+```python
+def parse_packet(data: bytes) -> Tuple[int, bytes, bool]:
+    """
+    Parse a PMR-171 packet.
+    
+    Returns: (command, payload, crc_valid)
+    """
+    # Verify header
+    if data[:4] != PACKET_HEADER:
+        raise ValueError(f"Invalid header: {data[:4].hex()}")
+    
+    length = data[4]
+    command = data[5]
+    payload = data[6:5 + length - 2]  # Exclude CRC bytes
+    
+    # Verify CRC
+    crc_data = data[4:5 + length - 2]
+    calculated_crc = crc16_ccitt(crc_data)
+    packet_crc = (data[5 + length - 2] << 8) | data[5 + length - 1]
+    
+    return command, payload, calculated_crc == packet_crc
+```
+
+**Parsing Channel Data:**
+
+```python
+def parse_channel_packet(data: bytes) -> ChannelData:
+    """Parse 26-byte channel payload into ChannelData."""
+    index = struct.unpack('>H', data[0:2])[0]
+    rx_mode = data[2]
+    tx_mode = data[3]
+    rx_freq = struct.unpack('>I', data[4:8])[0]
+    tx_freq = struct.unpack('>I', data[8:12])[0]
+    rx_ctcss = data[12]
+    tx_ctcss = data[13]
+    
+    # Decode null-terminated ASCII name
+    name_bytes = data[14:26]
+    name = name_bytes.split(b'\x00')[0].decode('ascii', errors='replace')
+    
+    return ChannelData(
+        index=index,
+        rx_mode=rx_mode,
+        tx_mode=tx_mode,
+        rx_freq_hz=rx_freq,
+        tx_freq_hz=tx_freq,
+        rx_ctcss_index=rx_ctcss,
+        tx_ctcss_index=tx_ctcss,
+        name=name
+    )
+```
+
+### 7.6 Bulk Operations
+
+**Reading All Channels with Progress:**
+
+```python
+def read_all_channels(
+    self, 
+    progress_callback: Callable[[int, int, str], None] = None,
+    cancel_check: Callable[[], bool] = None
+) -> List[ChannelData]:
+    """Read all channels from the radio."""
+    channels = []
+    
+    for i in range(CHANNEL_COUNT):  # 0-999
+        # Check for cancellation
+        if cancel_check and cancel_check():
+            break
+        
+        # Report progress
+        if progress_callback:
+            progress_callback(i + 1, CHANNEL_COUNT, f"Reading channel {i}")
+        
+        try:
+            channel = self.read_channel(i)
+            channels.append(channel)
+        except Exception as e:
+            if progress_callback:
+                progress_callback(i + 1, CHANNEL_COUNT, f"Error: {e}")
+    
+    return channels
+```
+
+### 7.7 Data Conversion
+
+**ChannelData to JSON-compatible Dictionary:**
+
+```python
+def to_dict(self) -> Dict[str, Any]:
+    """Convert to dictionary format for JSON codeplug."""
+    rx_bytes = self.rx_freq_hz.to_bytes(4, 'big')
+    tx_bytes = self.tx_freq_hz.to_bytes(4, 'big')
+    
+    return {
+        "channelLow": self.index,
+        "channelHigh": 0,
+        "channelName": self.name,
+        "vfoaMode": self.rx_mode,
+        "vfobMode": self.tx_mode,
+        "vfoaFrequency1": rx_bytes[0],
+        "vfoaFrequency2": rx_bytes[1],
+        "vfoaFrequency3": rx_bytes[2],
+        "vfoaFrequency4": rx_bytes[3],
+        "vfobFrequency1": tx_bytes[0],
+        "vfobFrequency2": tx_bytes[1],
+        "vfobFrequency3": tx_bytes[2],
+        "vfobFrequency4": tx_bytes[3],
+        "emitYayin": self.tx_ctcss_index,
+        "receiveYayin": self.rx_ctcss_index,
+        # ... additional fields with defaults
+    }
+```
+
+### 7.8 Error Handling
+
+**Custom Exception Classes:**
+
+```python
+class PMR171Error(Exception):
+    """Base exception for PMR-171 communication errors"""
+    pass
+
+class ConnectionError(PMR171Error):
+    """Error connecting to radio"""
+    pass
+
+class CommunicationError(PMR171Error):
+    """Error during communication"""
+    pass
+
+class CRCError(PMR171Error):
+    """CRC verification failed"""
+    pass
+
+class TimeoutError(PMR171Error):
+    """Communication timeout"""
+    pass
+```
+
+**Error Recovery Strategies:**
+
+| Error Type | Recovery Strategy | Max Retries |
+|------------|-------------------|-------------|
+| `TimeoutError` | Wait and retry request | 3 |
+| `CRCError` | Re-request data | 3 |
+| `CommunicationError` | Reconnect and retry | 1 |
+| `ConnectionError` | Prompt user to check cable | 0 |
+
+### 7.9 Thread Safety
+
+The implementation supports background operations with cancellation:
+
+```python
+# GUI can pass a cancellation callback
+def cancel_check():
+    return user_clicked_cancel
+
+channels = radio.read_all_channels(
+    progress_callback=update_progress_bar,
+    cancel_check=cancel_check
 )
-ser.dtr = True  # Critical!
-ser.rts = True  # Critical!
 ```
 
-**Read Operation:**
-```python
-def read_channel(self, channel_num: int) -> dict:
-    """Read single channel from radio"""
-    # Send read command
-    cmd = self._build_read_cmd(channel_num)
-    self.ser.write(cmd)
-    
-    # Read response
-    response = self.ser.read(CHANNEL_SIZE)
-    
-    # Parse and return channel data
-    return self._parse_channel(response)
-```
+### 7.10 Dependencies
 
-### 7.3 Error Handling
-
-| Error Type | Recovery Strategy |
-|------------|-------------------|
-| Timeout | Retry up to 3 times |
-| NAK | Log and skip channel |
-| Checksum Fail | Re-request data |
-| Disconnect | Close and reconnect |
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `pyserial` | ≥3.5 | Serial port communication |
+| `typing` | stdlib | Type hints |
+| `struct` | stdlib | Binary data packing/unpacking |
+| `dataclasses` | stdlib | Channel data structure |
 
 ---
 
