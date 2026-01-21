@@ -256,6 +256,10 @@ In PMR-171 JSON format:
 - `txCtcss`: Unused/deprecated (set to 255)
 - `rxCtcss`: Unused/deprecated (set to 255)
 
+**Etymology**: "Yayin" (亚音) is Mandarin for "sub-tone" — a literal translation of CTCSS (sub-audible tone). The characters break down as:
+- 亚 (yà) = sub, inferior, secondary
+- 音 (yīn) = tone, sound
+
 **IMPORTANT**: The radio uses `emitYayin`/`receiveYayin`, NOT `txCtcss`/`rxCtcss`.
 
 ## Implementation Checklist

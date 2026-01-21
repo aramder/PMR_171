@@ -212,6 +212,7 @@ PMR_171_CPS/
 
 1. **DTR/RTS Required**: Radio won't respond without DTR=HIGH and RTS=HIGH
 2. **CTCSS Field Names Misleading**: `rxCtcss`/`txCtcss` are IGNORED; `emitYayin`/`receiveYayin` control tones
+   - *"Yayin" (亚音) is Mandarin for "sub-tone" — a literal translation of CTCSS (sub-audible tone)*
 3. **Non-Linear Tone Encoding**: CTCSS tones use proprietary yayin values (1-55 with gaps)
 4. **Dual VFO Architecture**: Each channel has VFO A (RX) and VFO B (TX) frequencies
 5. **Mode 9 = DMR**: Added in firmware update, not in original documentation
