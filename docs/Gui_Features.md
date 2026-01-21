@@ -129,15 +129,24 @@ The tree panel includes a filter bar with the following options:
 
 ### 4. Menu Bar
 - **File Menu**:
-  - Save (placeholder for future implementation)
+  - Open JSON... (Ctrl+O) - Load channel data from PMR-171 JSON file
+  - Save JSON... (Ctrl+S) - Save channel data to PMR-171 JSON file
+  - Import from CSV... - Import channels from CSV format
+  - Export to CSV... - Export channels to CSV format (17 columns)
   - Exit
   
 - **Edit Menu**:
-  - Copy Channel
-  - Delete Channel
+  - Undo (Ctrl+Z) - Undo last edit (50 levels)
+  - Redo (Ctrl+Y) - Redo undone edit
+  - Delete Selected Channels
+  - Duplicate Selected Channels (Ctrl+D)
+  
+- **Program Menu**:
+  - Read from Radio... (Ctrl+R) - Download codeplug via UART
+  - Write to Radio... (Ctrl+W) - Upload codeplug via UART
   
 - **View Menu**:
-  - Refresh
+  - Select Columns... - Choose which columns to display in channel tree
   
 - **Help Menu**:
   - About
@@ -199,17 +208,28 @@ This interface follows industry standards from professional radio programming so
 - Advanced features separated
 - Raw data view for debugging
 
+## Implemented Features
+
+These features are fully implemented and working:
+
+- [x] Save edited channels back to JSON
+- [x] Export to CSV format (17 columns with frequencies, modes, CTCSS, DMR settings)
+- [x] Import from CSV (flexible column matching, case-insensitive)
+- [x] Bulk edit multiple channels (multi-select, right-click context menu)
+- [x] Frequency validation and warnings (out-of-band detection)
+- [x] CTCSS/DCS tone picker with all 50 standard CTCSS tones
+- [x] UART programming interface (Read/Write to Radio)
+- [x] Undo/Redo with 50-level history
+- [x] Progress dialogs for radio operations
+- [x] Column selection for channel tree
+
 ## Future Enhancements
 
 Planned features:
-- [ ] Save edited channels back to JSON
-- [ ] Export to other formats (CHIRP .img, .csv)
-- [ ] Import from multiple sources
 - [ ] Drag-and-drop channel reordering
-- [ ] Bulk edit multiple channels
-- [ ] Frequency validation and warnings
-- [ ] CTCSS/DCS tone picker with standard values
-- [ ] DMR database integration
+- [ ] DMR database integration (import from RepeaterBook)
 - [ ] Zone/scan list management
 - [ ] Radio model profiles
-- [ ] UART programming interface
+- [ ] Auto-programming from repeater databases
+- [ ] Channel zones/groups for organization
+- [ ] Import/Export presets (save favorite configurations)

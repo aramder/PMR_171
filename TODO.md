@@ -130,7 +130,12 @@ This document tracks planned features, enhancements, and known issues for the PM
   - [x] Troubleshooting guide
 
 ### Features
-- [x] **CSV export**: Export channel data to CSV format for compatibility with other tools and spreadsheet analysis (Jan 2026)
+- [x] **CSV export/import**: ✅ COMPLETE AND TESTED (Jan 21, 2026)
+  - Export channel data to CSV format (17 columns including frequencies, modes, CTCSS, DMR settings)
+  - Import from CSV with flexible column matching (case-insensitive headers)
+  - Replace/Merge/Cancel options for existing data
+  - Full undo support for import operations
+  - Test script: `tests/test_csv_export_import.py` (14 channels, 100% round-trip accuracy)
 - [x] **Bulk channel operations**: Select multiple channels for batch editing, deletion, or copying (Jan 2026)
 
 ### Format Support
@@ -280,15 +285,32 @@ The UART programming protocol has been fully reverse engineered and documented. 
 - `pmr_171_cps/radio/pmr171_uart.py` - Python UART implementation
 - `tests/test_uart_read_write_verify.py` - Validation test script
 
-### CSV Export Considerations
-- Map PMR-171 fields to human-readable column names
-- Include both RX and TX frequencies (VFO A and VFO B)
-- Format CTCSS/DCS codes properly (not raw integers)
-- Consider CHIRP-compatible CSV format for round-trip compatibility
+### CSV Export/Import (✅ IMPLEMENTED)
+- **Export** (File → Export to CSV...): 17 columns with human-readable names
+  - Channel, Name, RX/TX Frequency, Offset, Mode, Channel Type
+  - RX/TX CTCSS/DCS, Power, Squelch Mode, Bandwidth
+  - DMR fields: Own ID, Call ID, Slot, Color Codes (RX/TX)
+- **Import** (File → Import from CSV...): Flexible parsing
+  - Required columns: Channel, RX Frequency
+  - Case-insensitive column matching
+  - Auto-detection of CTCSS/DCS and DMR values
+- **Test Coverage**: `tests/test_csv_export_import.py`
 
 ---
 
 ## Session History
+
+### January 21, 2026 (Afternoon Session)
+- **Focus**: CSV Import/Export Testing
+- **Accomplishments**:
+  - Verified CSV export/import functionality is complete and working
+  - Created automated test script: `tests/test_csv_export_import.py`
+  - Tested round-trip accuracy with 14 channels from Mode_Test.json - 100% match
+  - Verified all 17 CSV columns export correctly (frequencies, modes, CTCSS, DMR settings)
+  - Tested GUI CSV menu items (File → Export to CSV, File → Import from CSV)
+- **Documentation Updated**:
+  - `TODO.md` - Updated CSV feature status to ✅ COMPLETE AND TESTED
+  - Added test script reference and validation results
 
 ### January 21, 2026 (Late Morning Session)
 - **Focus**: DMR vs DFM Display Mode Investigation
@@ -421,6 +443,11 @@ The UART programming protocol has been fully reverse engineered and documented. 
 - [x] Window icon support (Jan 2026)
 - [x] Data binding for all editable fields (Jan 2026)
 - [x] CSV export functionality (Jan 2026)
+- [x] **CSV import functionality** (Jan 21, 2026)
+  - Flexible column matching (case-insensitive)
+  - Replace/Merge/Cancel import options
+  - Full undo support
+  - Test script with 100% round-trip verification
 - [x] Automatic frequency formatting with live tree view updates (Jan 2026)
 - [x] Channel validation with visual warnings for out-of-band frequencies and invalid tones (Jan 2026)
 - [x] Bulk channel operations with multi-select, right-click context menu, delete and duplicate (Jan 2026)
