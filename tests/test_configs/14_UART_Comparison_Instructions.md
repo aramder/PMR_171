@@ -9,18 +9,18 @@ Both Test 13 and Test 13A cause the radio to crash when written. We need to iden
 ## Test Configuration
 Configure 10 channels in manufacturer's software matching Test 13A layout:
 
-| Ch# | Name | Type | Frequency | Call Type | DMR/DFM Display | Slot | DMR ID | Call ID | Color Code |
-|-----|------|------|-----------|-----------|-----------------|------|--------|---------|------------|
-| 0 | CF0_CH0 | DMR | 446.000 | Private | DFM | 1 | 3107683 | 1 | 1 |
-| 1 | CF1_CH1 | DMR | 446.000 | Group | DMR | 1 | 3107683 | 9 | 1 |
-| 2 | CF2_CH2 | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 |
-| 3 | CF0_CH3 | DMR | 446.000 | Private | DFM | 1 | 3107683 | 10000 | 1 |
-| 4 | CF1_CH4 | DMR | 446.000 | Group | DMR | 1 | 3107683 | 91 | 1 |
-| 5 | CF2_CH5 | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 |
-| 6 | ANALOG_REF | Analog | 446.000 | N/A | N/A | N/A | N/A | N/A | N/A |
-| 7 | CF0_TS2 | DMR | 446.000 | Private | DFM | 2 | 3107683 | 1 | 1 |
-| 8 | CF1_TS2 | DMR | 446.000 | Group | DMR | 2 | 3107683 | 9 | 1 |
-| 9 | CF2_ALLCALL | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 |
+| Ch# | Name | Type | Frequency | Call Type | DMR/DFM | Slot | DMR ID | Call ID | CC | CTCSS TX | CTCSS RX |
+|-----|------|------|-----------|-----------|---------|------|--------|---------|----|---------|---------| 
+| 0 | CF0_CH0 | DMR | 446.000 | Private | DFM | 1 | 3107683 | 1 | 1 | 67.0 | 67.0 |
+| 1 | CF1_CH1 | DMR | 446.000 | Group | DMR | 1 | 3107683 | 9 | 1 | 71.9 | 71.9 |
+| 2 | CF2_CH2 | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 | 77.0 | 77.0 |
+| 3 | CF0_CH3 | DMR | 446.000 | Private | DFM | 1 | 3107683 | 10000 | 1 | 82.5 | 82.5 |
+| 4 | CF1_CH4 | DMR | 446.000 | Group | DMR | 1 | 3107683 | 91 | 1 | 88.5 | 88.5 |
+| 5 | CF2_CH5 | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 | 94.8 | 94.8 |
+| 6 | ANALOG_REF | Analog | 446.000 | N/A | N/A | N/A | N/A | N/A | N/A | 100.0 | 100.0 |
+| 7 | CF0_TS2 | DMR | 446.000 | Private | DFM | 2 | 3107683 | 1 | 1 | 103.5 | 103.5 |
+| 8 | CF1_TS2 | DMR | 446.000 | Group | DMR | 2 | 3107683 | 9 | 1 | 107.2 | 107.2 |
+| 9 | CF2_ALLCALL | DMR | 446.000 | All Call | DMR | 1 | 3107683 | 16 | 1 | 110.9 | 110.9 |
 
 **Key Settings:**
 - All frequencies: 446.000 MHz
@@ -28,6 +28,8 @@ Configure 10 channels in manufacturer's software matching Test 13A layout:
 - Color Code: 1 (both RX and TX)
 - callFormat mapping: 0=Private, 1=Group, 2=All Call
 - Display mode: Alternate between DFM and DMR if possible
+- CTCSS tones: Sequential standard tones (67.0 Hz through 110.9 Hz)
+- CTCSS TX = CTCSS RX for all channels (matched squelch)
 
 ## Test Procedure
 

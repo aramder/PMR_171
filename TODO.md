@@ -61,16 +61,19 @@ This document tracks planned features, enhancements, and known issues for the PM
   - [x] Python implementation complete in `pmr_171_cps/radio/pmr171_uart.py`
   - **Captured data archived**: UART transaction logs in `tests/test_configs/Results/*.spm`
 
-- [ ] **Direct PMR-171 programming via UART**: IN PROGRESS (January 19-21, 2026)
+- [ ] **Direct PMR-171 programming via UART**: 🔴 **BLOCKED - DMR Write Failure** (January 19-21, 2026)
   - [x] Implemented Python UART communication (pyserial library)
   - [x] Added "Program Radio" menu option with COM port selection
   - [x] Included read/backup functionality to pull existing config from radio
   - [x] Error handling and validation before writing to radio
-  - [ ] **DMR Display Mode Issue**: DMR vs DFM label not controlled by known fields (See Known Issues)
+  - [x] ✅ **Reading DMR channels**: Successfully reads manually programmed DMR channels
+  - [x] ✅ **Writing Analog channels**: Works perfectly, fully validated
+  - [ ] 🔴 **Writing DMR channels**: BLOCKED - Both our CPS and manufacturer's CPS fail
   - **Location**: `pmr_171_cps/radio/pmr171_uart.py`
   - **GUI Integration**: Radio menu with Read/Write to Radio options
   - **Test Script**: `tests/test_uart_read_write_verify.py`
-  - **Status**: Analog channels work perfectly; DMR channels functional but display as "DFM"
+  - **Status**: Analog programming complete; DMR write **blocked pending firmware/CPS fix**
+  - **Issue**: See Known Issues → "DMR Write Failure" below for full details
 
 - [x] **UART Verification Test Script**: ✅ COMPLETE AND VALIDATED (January 19, 2026)
   - **Location**: `tests/test_uart_read_write_verify.py`
@@ -178,34 +181,53 @@ This document tracks planned features, enhancements, and known issues for the PM
 
 ## Known Issues / Bugs
 
-### DMR Display Mode Label (Functionality Issue) - IN PROGRESS
-**Issue**: DMR channels display as "DFM" instead of "DMR" on radio screen, despite correct functionality
-- **Discovered**: January 21, 2026 during DMR programming testing
-- **Location**: Radio display screen - affects visual label only, not actual DMR functionality
-- **Impact**: **COSMETIC** - All DMR features work correctly (Color Codes, IDs, Slots, Call Types)
-  - `callFormat` field correctly controls call types (Private/Group/All) ✅
-  - Color Codes, DMR IDs, Timeslots all function properly ✅
-  - Only the "DMR" vs "DFM" display label is incorrect
-- **Investigation Status**:
-  - Tested multiple field combinations: callFormat, chType, callId, etc.
-  - Compared 3 readback files from test uploads and manual configuration
-  - **NEW**: Created Test 13 configuration to systematically test `callFormat` values
-  - Documentation conflict identified between `DMR_Display_Investigation.md` and `DMR_Display_Modes.md`
-  - **Hypothesis**: `callFormat` controls display (0=DFM private, 1=DMR group, 2=DMR all)
-- **Next Steps**: 
-  - **Run Test 13** - `tests/test_configs/13_dmr_dfm_display_test.json`
-  - Observe which channels display DMR vs DFM based on callFormat values
-  - If all display same, UART serial analysis required
-  - Compare byte-level differences in channel data packets
-- **Workaround**: None needed - DMR functionality is correct, label is cosmetic
-- **Documentation**: 
-  - `docs/DMR_Display_Investigation.md` - Investigation notes
-  - `docs/DMR_Display_Modes.md` - Conflicting conclusions (needs update)
-  - `tests/test_configs/13_Test_Instructions.md` - New test procedure
-- **Related Files**: 
-  - Test config: `tests/test_configs/13_dmr_dfm_display_test.json` (NEW - callFormat 0/1/2/255 variations)
-  - Test config: `tests/test_configs/12_dmr_color_code_test.json`
-- **Priority**: LOW - Functionality works; systematic testing in progress
+### DMR Write Failure (Critical Blocking Issue) - 🔴 BLOCKED
+**Issue**: Both our CPS and manufacturer's CPS fail to write DMR channels to the radio properly
+- **Discovered**: January 21, 2026 during Test 13/14 validation attempts
+- **Severity**: **CRITICAL** - Blocks all DMR write functionality
+- **Impact**: Cannot program DMR channels via any CPS software
+- **What Fails**:
+  - **Our CPS**: Radio crashes when writing DMR configurations (Tests 13, 13A)
+  - **Manufacturer CPS**: Write completes but DMR data is not retained
+    - DMR channels (`chType: 1`) read back as analog (`chType: 0`)
+    - DMR-specific fields (ownId, callId, slot, etc.) are zeroed in readback
+    - Only partial data from channel 0 is retained
+- **Investigation Summary**:
+  - Created Test 13, 13A, 14 configurations
+  - Attempted write with our CPS → radio crashes
+  - Attempted write with manufacturer's CPS → data not retained
+  - Analyzed manufacturer's write/readback JSONs
+  - Identified several field encoding issues (slot field, color codes, etc.)
+  - BUT: Fixing these doesn't help if manufacturer's CPS also fails
+- **Root Cause**: Unknown - could be:
+  - Radio firmware bug preventing DMR programming via UART
+  - Manufacturer CPS bug (GH Terminal software issue)
+  - Missing initialization sequence or special DMR mode activation
+  - Fundamental incompatibility with this radio hardware/firmware version
+- **What Works**:
+  - ✅ Reading DMR channels (manually programmed via radio menus)
+  - ✅ Writing analog channels (fully functional)
+  - ✅ CTCSS encoding for all channels
+  - ✅ Reading all DMR parameters (IDs, Color Codes, Slots, Call Types)
+- **Workaround**: 
+  - DMR channels must be programmed manually on the radio
+  - Use CPS to read DMR config after manual programming
+  - CPS can edit analog channels only
+- **Documentation**:
+  - `tests/test_configs/Results/14_Manufacturer_Analysis.md` - Complete analysis
+  - `tests/test_configs/14_UART_Comparison_Instructions.md` - Test procedure
+  - `docs/DMR_Display_Investigation.md` - Related display mode investigation
+- **Priority**: 🔴 **BLOCKED** - Cannot proceed until:
+  - Manufacturer provides firmware update, OR
+  - Manufacturer provides working CPS version, OR
+  - Deeper UART protocol analysis reveals missing initialization
+
+### DMR Display Mode Label (Cosmetic Issue) - ON HOLD
+**Issue**: DMR channels display as "DFM" instead of "DMR" on radio screen
+- **Status**: **BLOCKED** by DMR Write Failure issue above
+- **Impact**: Cannot test until DMR write functionality works
+- **Investigation**: On hold pending resolution of write failure
+- **Priority**: LOW - Cosmetic only, blocked by critical issue
 
 ### Status Bar Border (Visual Issue)
 **Issue**: Status bar lacks a defined border at the top, creating a soft transition that doesn't look professional
@@ -275,6 +297,31 @@ The UART programming protocol has been fully reverse engineered and documented. 
 ---
 
 ## Session History
+
+### January 21, 2026 (Late Evening Session)
+- **Focus**: DMR Write Failure Investigation
+- **Accomplishments**:
+  - Tested our CPS with Test 13 and 13A configurations → radio crashes
+  - Set up UART capture comparison (Test 14)
+  - Configured identical channels in manufacturer's CPS
+  - Captured manufacturer's write and readback
+  - **CRITICAL DISCOVERY**: Manufacturer's CPS also fails to write DMR properly
+  - Created comprehensive analysis: `tests/test_configs/Results/14_Manufacturer_Analysis.md`
+  - Documented field encoding differences (slot, color codes, CTCSS fields)
+  - **Decision**: Pause DMR write development - issue is likely radio firmware/CPS bug
+- **Key Findings**:
+  - Manufacturer write: DMR channels (`chType: 1`) read back as analog (`chType: 0`)
+  - Data corruption in readback - most channels blank
+  - Slot field encoding issue identified (1-based vs 0-based)
+  - Color code encoding differs (rxCc: 0 vs 1, txCc: 2 vs 1)
+  - Missing rxCtcss/txCtcss fields
+- **Status Update**:
+  - DMR write functionality: 🔴 **BLOCKED - ON HOLD**
+  - Cannot proceed without working manufacturer CPS or firmware update
+  - Reading DMR works; Writing analog works; DMR write does not work
+- **Documentation Updated**:
+  - `tests/test_configs/Results/14_Manufacturer_Analysis.md` - Complete investigation
+  - `TODO.md` - Updated with blocking issue status
 
 ### January 21, 2026 (Afternoon Session)
 - **Focus**: CSV Import/Export Testing
