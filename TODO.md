@@ -175,7 +175,6 @@ This document tracks planned features, enhancements, and known issues for the PM
 - [x] **Frequency calculator**: Repeater offset calculator and tone lookup
 - [x] **Automatic frequency formatting**: Format frequency inputs to standard MHz precision (XXX.XXXXXX) with live tree view updates (Jan 2026)
 - [x] **Channel validation**: Warn about out-of-band frequencies, invalid tones (Jan 2026)
-- [ ] **Auto-programming**: Generate channels from repeater databases
 
 ---
 
